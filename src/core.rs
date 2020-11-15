@@ -10,9 +10,6 @@ use serde_json::{json, value::to_value, Value};
 #[cfg(feature = "email")]
 use sendgrid::v3::{Content, Email, Message, Personalization, Sender};
 
-#[cfg(feature = "email")]
-use reqwest::Response;
-
 // ***********************************************************************
 // STATUS
 // **********************************************************************
