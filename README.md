@@ -77,4 +77,6 @@ async main() -> anyhow::Result<()> {
 }
 ```
 
+## Special Thanks
 
+- [bsundsrud](https://github.com/bsundsrud) for its basic implementation [ruuls-rs](https://github.com/bsundsrud/ruuls-rs)
