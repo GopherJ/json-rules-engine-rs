@@ -6,7 +6,7 @@ Add this package to `Cargo.toml` of your project. (Check https://crates.io/crate
 
 ```toml
 [dependencies]
-json-rules-engine = { version = "0.4.0" }
+json-rules-engine = { version = "0.5.0", features = ["email"] }
 tokio = { version = "0.3.3", features = ["macros"] }
 serde_json = { version = "*" }
 anyhow = { version = "*" }
@@ -17,10 +17,10 @@ anyhow = { version = "*" }
 - Built in operators
 - Full support for `ALL`, `ANY`, `AtLeast` boolean operators, including recursive nesting
 - Type Safe
-- Lightweight
 - Load rules from json
 - HTTP post to callback url
 - Built in Moustache render
+- Email notifications based on `SendGrid`
 
 ## Get started
 

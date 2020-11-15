@@ -1,11 +1,17 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 use std::ops::{BitAnd, BitOr, Not};
 
-use futures_util::future::try_join_all;
+use futures_util::future::{try_join_all, FutureExt, TryFutureExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Value};
+
+#[cfg(feature = "email")]
+use sendgrid::v3::{Content, Email, Message, Personalization, Sender};
+
+#[cfg(feature = "email")]
+use reqwest::Response;
 
 // ***********************************************************************
 // STATUS
@@ -103,6 +109,13 @@ pub enum Event {
         #[serde(flatten)]
         params: EventParams,
     },
+    #[cfg(feature = "email")]
+    EmailNotification {
+        from: String,
+        to: Vec<String>,
+        #[serde(flatten)]
+        params: EventParams,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -116,15 +129,20 @@ impl Rule {
         let condition_result = self.conditions.check_value(info);
         let mut event = self.event.to_owned();
 
-        match event {
-            Event::Message(ref mut params) | Event::PostToCallbackUrl { ref mut params, .. } => {
-                if let Ok(message) = mustache::compile_str(&params.message)
-                    .and_then(|template| template.render_to_string(info))
-                {
-                    params.message = message;
-                }
+        let params = {
+            match event {
+                Event::Message(ref mut params)
+                | Event::PostToCallbackUrl { ref mut params, .. } => params,
+                #[cfg(feature = "email")]
+                Event::EmailNotification { ref mut params, .. } => params,
             }
         };
+
+        if let Ok(message) = mustache::compile_str(&params.message)
+            .and_then(|template| template.render_to_string(info))
+        {
+            params.message = message;
+        }
 
         RuleResult {
             condition_result,
@@ -137,13 +155,25 @@ impl Rule {
 pub struct Engine {
     rules: Vec<Rule>,
     client: Client,
+    #[cfg(feature = "email")]
+    sender: Sender,
 }
 
 impl Engine {
+    #[cfg(not(feature = "email"))]
     pub fn new() -> Self {
         Self {
             rules: Vec::new(),
             client: Client::new(),
+        }
+    }
+
+    #[cfg(feature = "email")]
+    pub fn new(api_key: String) -> Self {
+        Self {
+            rules: Vec::new(),
+            client: Client::new(),
+            sender: Sender::new(api_key),
         }
     }
 
@@ -170,11 +200,38 @@ impl Engine {
                     self.client
                         .post(callback_url)
                         .json(&json!({
-                            "event_params": params,
+                            "event": params,
                             "facts": &facts,
                         }))
-                        .send(),
+                        .send()
+                        .map_err(Error::from)
+                        .boxed(),
                 ),
+                #[cfg(feature = "email")]
+                Event::EmailNotification {
+                    ref from,
+                    ref to,
+                    ref params,
+                } if !to.is_empty() => {
+                    let p = {
+                        let mut p = Personalization::new(Email::new(&to[0].to_owned()));
+                        for x in to.iter().skip(1) {
+                            p = p.add_to(Email::new(x));
+                        }
+                        p
+                    };
+
+                    let m = Message::new(Email::new(from))
+                        .set_subject(&params.title)
+                        .add_content(
+                            Content::new()
+                                .set_content_type("text/plain")
+                                .set_value(&params.message),
+                        )
+                        .add_personalization(p);
+
+                    Some(async move { self.sender.send(&m).map_err(Error::from).await }.boxed())
+                }
                 _ => None,
             });
 
@@ -252,13 +309,13 @@ impl Condition {
                 ref field,
                 ref constraint,
             } => {
-                let pointer = if field.starts_with("/") {
+                let path = if field.starts_with("/") {
                     field.to_owned()
                 } else {
                     format!("/{}", field)
                 };
 
-                let status = if let Some(s) = info.pointer(&pointer) {
+                let status = if let Some(s) = info.pointer(&path) {
                     constraint.check_value(s)
                 } else {
                     Status::Unknown
