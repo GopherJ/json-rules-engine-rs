@@ -21,6 +21,8 @@ anyhow = { version = "*" }
 - HTTP post to callback url
 - Built in Moustache render
 - Email notifications based on `SendGrid`
+- Safe script
+- Custom function
 
 ## Get started
 
@@ -42,6 +44,9 @@ async main() -> anyhow::Result<()> {
                     "field": "age",
                     "operator": "int_in_range",
                     "value": [20, 25] 
+                },
+                {
+                    "script": "facts.age > 20 && facts.age <= 25",
                 },
                 {
                     "field": "action",

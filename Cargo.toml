@@ -13,14 +13,26 @@ version     = "0.5.0"
 
 [dependencies]
 futures-util = "0.3.8"
+lazy_static  = "1.4.0"
 mustache     = "0.9.0"
 reqwest      = { version = "0.10.8", features = ["json", "rustls-tls"] }
+rhai         = { version = "0.19.5", features = [
+    "sync",
+    "only_i32",
+    "no_function",
+    "no_float",
+    "no_optimize",
+    "no_module",
+    "no_closure",
+    "serde",
+    "unchecked",
+] }
 sendgrid     = { version = "0.15.0", default-features = false, features = ["async", "rustls"], optional = true }
 serde        = { version = "1.0.117", features = ["derive"] }
 serde_json   = { version = "1.0.59" }
 thiserror    = "1.0.22"
 
 [features]
-default = ["email"]
+default = []
 
 email = ["sendgrid"]

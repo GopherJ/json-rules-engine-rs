@@ -7,6 +7,20 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Value};
 
+use rhai::{
+    def_package,
+    packages::{ArithmeticPackage, BasicArrayPackage, BasicMapPackage, LogicPackage, Package},
+    serde::to_dynamic,
+    Dynamic, Engine as RhaiEngine, RegisterFn, Scope,
+};
+
+def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
+    ArithmeticPackage::init(lib);
+    LogicPackage::init(lib);
+    BasicArrayPackage::init(lib);
+    BasicMapPackage::init(lib);
+});
+
 #[cfg(feature = "email")]
 use sendgrid::v3::{Content, Email, Message, Personalization, Sender};
 
@@ -86,6 +100,9 @@ pub enum Condition {
         #[serde(flatten)]
         constraint: Constraint,
     },
+    Eval {
+        script: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,8 +139,8 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn check_value(&self, info: &Value) -> RuleResult {
-        let condition_result = self.conditions.check_value(info);
+    pub fn check_value(&self, info: &Value, rhai_engine: &RhaiEngine) -> RuleResult {
+        let condition_result = self.conditions.check_value(info, rhai_engine);
         let mut event = self.event.to_owned();
 
         let params = {
@@ -154,6 +171,7 @@ pub struct Engine {
     client: Client,
     #[cfg(feature = "email")]
     sender: Sender,
+    rhai_engine: RhaiEngine,
 }
 
 impl Engine {
@@ -162,6 +180,11 @@ impl Engine {
         Self {
             rules: Vec::new(),
             client: Client::new(),
+            rhai_engine: {
+                let mut engine = RhaiEngine::new_raw();
+                engine.load_package(JsonRulesEnginePackage::new().get());
+                engine
+            },
         }
     }
 
@@ -171,7 +194,16 @@ impl Engine {
             rules: Vec::new(),
             client: Client::new(),
             sender: Sender::new(api_key),
+            rhai_engine: {
+                let mut engine = RhaiEngine::new_raw();
+                engine.load_package(JsonRulesEnginePackage::new().get());
+                engine
+            },
         }
+    }
+
+    pub fn add_function<T: Serialize>(&mut self, fname: &str, f: fn(Dynamic) -> bool) {
+        self.rhai_engine.register_fn(fname, f);
     }
 
     pub fn add_rule(&mut self, rule: Rule) {
@@ -183,7 +215,7 @@ impl Engine {
         let rule_results: Vec<RuleResult> = self
             .rules
             .iter()
-            .map(|rule| rule.check_value(&facts))
+            .map(|rule| rule.check_value(&facts, &self.rhai_engine))
             .filter(|rule_result| rule_result.condition_result.status == Status::Met)
             .collect();
 
@@ -241,13 +273,13 @@ impl Engine {
 impl Condition {
     /// Starting at this node, recursively check (depth-first) any child nodes and
     /// aggregate the results
-    pub fn check_value(&self, info: &Value) -> ConditionResult {
+    pub fn check_value(&self, info: &Value, rhai_engine: &RhaiEngine) -> ConditionResult {
         match *self {
             Condition::And { ref and } => {
                 let mut status = Status::Met;
                 let children = and
                     .iter()
-                    .map(|c| c.check_value(info))
+                    .map(|c| c.check_value(info, rhai_engine))
                     .inspect(|r| status = status & r.status)
                     .collect::<Vec<_>>();
 
@@ -261,7 +293,7 @@ impl Condition {
                 let mut status = Status::NotMet;
                 let children = or
                     .iter()
-                    .map(|c| c.check_value(info))
+                    .map(|c| c.check_value(info, rhai_engine))
                     .inspect(|r| status = status | r.status)
                     .collect::<Vec<_>>();
 
@@ -278,7 +310,7 @@ impl Condition {
                 let mut met_count = 0;
                 let children = conditions
                     .iter()
-                    .map(|c| c.check_value(info))
+                    .map(|c| c.check_value(info, rhai_engine))
                     .inspect(|r| {
                         if r.status == Status::Met {
                             met_count += 1;
@@ -320,6 +352,26 @@ impl Condition {
 
                 ConditionResult {
                     name: field.to_owned(),
+                    status,
+                    children: Vec::new(),
+                }
+            }
+            Condition::Eval { ref script } => {
+                let mut scope = Scope::new();
+                if let Ok(val) = to_dynamic(info) {
+                    scope.push_dynamic("facts", val);
+                }
+                let status = if rhai_engine
+                    .eval_with_scope::<bool>(&mut scope, script)
+                    .unwrap_or(false)
+                {
+                    Status::Met
+                } else {
+                    Status::NotMet
+                };
+
+                ConditionResult {
+                    name: "Eval".to_owned(),
                     status,
                     children: Vec::new(),
                 }
