@@ -88,14 +88,14 @@ pub enum Condition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventParams {
     #[serde(rename = "type")]
-    ty: String,
-    title: String,
-    message: String,
+    pub ty: String,
+    pub title: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "params")]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "type", content = "params")]
 pub enum Event {
     Message(EventParams),
     PostToCallbackUrl {
@@ -107,8 +107,8 @@ pub enum Event {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
-    conditions: Condition,
-    event: Event,
+    pub conditions: Condition,
+    pub event: Event,
 }
 
 impl Rule {
@@ -278,7 +278,7 @@ impl Condition {
 // CONSTRAINT
 // **********************************************************************
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all(serialize = "snake_case"))]
+#[serde(rename_all = "snake_case")]
 #[serde(tag = "operator", content = "value")]
 pub enum Constraint {
     StringEquals(String),

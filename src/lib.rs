@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 //! Simple rules engine that represents requirements as a tree, with each node having one or more requirements in order to be "Met".
 //!
-//! A tree of rules is constructed, and then the [`.check()`][1] method is called.
-//! `map` is a `field: value` mapping of facts that will be given to each node in the tree for testing.
+//! A tree of rules is constructed, and then the `.check_json()` method is called.
+//! `json` is a nested `field: value` that will be given to each node in the tree for testing.
 //!
-//! Status output can be either `Met`, `NotMet`, or `Unknown` if the tested field is not present in the map.
+//! Status output can be either `Met`, `NotMet`, or `Unknown` if the tested field is not present in the json.
 //!
 //! To construct a tree, see the following methods.
 //!
@@ -57,11 +57,11 @@
 //!
 //! [1]: enum.Rule.html#method.check
 
-mod error;
 mod core;
+mod error;
 
 pub use crate::core::{
-    Condition, ConditionResult, Constraint, Engine, Event, EventParams, RuleResult, Status,
+    Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule, RuleResult, Status,
 };
 
 pub use error::{Error, Result};
