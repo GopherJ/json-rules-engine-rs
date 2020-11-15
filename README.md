@@ -6,7 +6,7 @@ Add this package to `Cargo.toml` of your project. (Check https://crates.io/crate
 
 ```toml
 [dependencies]
-json-rules-engine = { version = "0.3.0" }
+json-rules-engine = { version = "0.4.0" }
 tokio = { version = "0.3.3", features = ["macros"] }
 serde_json = { version = "*" }
 anyhow = { version = "*" }
