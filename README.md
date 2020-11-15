@@ -22,7 +22,6 @@ anyhow = { version = "*" }
 - Built in Moustache render
 - Email notifications based on `SendGrid`
 - Safe script
-- Custom function
 
 ## Get started
 

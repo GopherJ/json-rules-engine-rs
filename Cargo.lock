@@ -381,7 +381,6 @@ name = "json-rules-engine"
 version = "0.5.0"
 dependencies = [
  "futures-util",
- "lazy_static",
  "mustache",
  "reqwest",
  "rhai",

@@ -11,7 +11,7 @@ use rhai::{
     def_package,
     packages::{ArithmeticPackage, BasicArrayPackage, BasicMapPackage, LogicPackage, Package},
     serde::to_dynamic,
-    Dynamic, Engine as RhaiEngine, RegisterFn, Scope,
+    Engine as RhaiEngine, Scope,
 };
 
 def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
@@ -200,10 +200,6 @@ impl Engine {
                 engine
             },
         }
-    }
-
-    pub fn add_function<T: Serialize>(&mut self, fname: &str, f: fn(Dynamic) -> bool) {
-        self.rhai_engine.register_fn(fname, f);
     }
 
     pub fn add_rule(&mut self, rule: Rule) {
