@@ -21,6 +21,6 @@ serde_json   = { version = "1.0.59" }
 thiserror    = "1.0.22"
 
 [features]
-default = []
+default = ["email"]
 
 email = ["sendgrid"]
