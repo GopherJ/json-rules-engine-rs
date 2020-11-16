@@ -5,7 +5,7 @@ use std::ops::{BitAnd, BitOr, Not};
 use futures_util::future::{join_all, FutureExt, TryFutureExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, value::to_value, Value};
+use serde_json::{json, value::to_value, Map as SerdeMap, Value};
 
 use rhai::{
     def_package,
@@ -122,6 +122,8 @@ pub enum Event {
         callback_url: String,
         #[serde(flatten)]
         params: EventParams,
+        #[serde(default)]
+        app_data: SerdeMap<String, Value>,
     },
     #[cfg(feature = "email")]
     EmailNotification {
@@ -236,12 +238,14 @@ impl Engine {
                     Event::PostToCallbackUrl {
                         ref callback_url,
                         ref params,
+                        ref app_data,
                     } => Some(
                         self.client
                             .post(callback_url)
                             .json(&json!({
                                 "event": params,
                                 "facts": &facts,
+                                "app_data": app_data
                             }))
                             .send()
                             .map_err(Error::from)
