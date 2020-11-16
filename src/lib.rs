@@ -64,7 +64,7 @@ pub use crate::core::{
     Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule, RuleResult, Status,
 };
 
-pub use rhai::{Map, serde::from_dynamic};
+pub use rhai::{serde::from_dynamic, Map};
 
 pub use error::{Error, Result};
 

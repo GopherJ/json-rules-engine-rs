@@ -208,6 +208,14 @@ impl Engine {
         self.rules.push(rule)
     }
 
+    pub fn add_rules(&mut self, rules: Vec<Rule>) {
+        self.rules.extend(rules)
+    }
+
+    pub fn clear(&mut self) {
+        self.rules.clear();
+    }
+
     pub fn add_function(&mut self, fname: &str, f: fn(Map) -> bool) {
         self.rhai_engine.register_fn(fname, f);
     }
