@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 
 use std::ops::{BitAnd, BitOr, Not};
 
-use futures_util::future::{try_join_all, FutureExt, TryFutureExt};
+use futures_util::future::{join_all, FutureExt, TryFutureExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Value};
@@ -135,32 +135,34 @@ pub enum Event {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
     pub conditions: Condition,
-    pub event: Event,
+    pub events: Vec<Event>,
 }
 
 impl Rule {
     pub fn check_value(&self, info: &Value, rhai_engine: &RhaiEngine) -> RuleResult {
         let condition_result = self.conditions.check_value(info, rhai_engine);
-        let mut event = self.event.to_owned();
+        let mut events = self.events.to_owned();
 
-        let params = {
-            match event {
-                Event::Message(ref mut params)
-                | Event::PostToCallbackUrl { ref mut params, .. } => params,
-                #[cfg(feature = "email")]
-                Event::EmailNotification { ref mut params, .. } => params,
+        for event in &mut events {
+            let params = {
+                match *event {
+                    Event::Message(ref mut params)
+                    | Event::PostToCallbackUrl { ref mut params, .. } => params,
+                    #[cfg(feature = "email")]
+                    Event::EmailNotification { ref mut params, .. } => params,
+                }
+            };
+
+            if let Ok(message) = mustache::compile_str(&params.message)
+                .and_then(|template| template.render_to_string(info))
+            {
+                params.message = message;
             }
-        };
-
-        if let Ok(message) = mustache::compile_str(&params.message)
-            .and_then(|template| template.render_to_string(info))
-        {
-            params.message = message;
         }
 
         RuleResult {
             condition_result,
-            event,
+            events,
         }
     }
 }
@@ -221,50 +223,54 @@ impl Engine {
 
         let requests = rule_results
             .iter()
-            .filter_map(|rule_result| match rule_result.event {
-                Event::PostToCallbackUrl {
-                    ref callback_url,
-                    ref params,
-                } => Some(
-                    self.client
-                        .post(callback_url)
-                        .json(&json!({
-                            "event": params,
-                            "facts": &facts,
-                        }))
-                        .send()
-                        .map_err(Error::from)
-                        .boxed(),
-                ),
-                #[cfg(feature = "email")]
-                Event::EmailNotification {
-                    ref from,
-                    ref to,
-                    ref params,
-                } if !to.is_empty() => {
-                    let p = {
-                        let mut p = Personalization::new(Email::new(&to[0].to_owned()));
-                        for x in to.iter().skip(1) {
-                            p = p.add_to(Email::new(x));
-                        }
-                        p
-                    };
+            .map(|rule_result| {
+                rule_result.events.iter().filter_map(|event| match event {
+                    Event::PostToCallbackUrl {
+                        ref callback_url,
+                        ref params,
+                    } => Some(
+                        self.client
+                            .post(callback_url)
+                            .json(&json!({
+                                "event": params,
+                                "facts": &facts,
+                            }))
+                            .send()
+                            .map_err(Error::from)
+                            .boxed(),
+                    ),
+                    #[cfg(feature = "email")]
+                    Event::EmailNotification {
+                        ref from,
+                        ref to,
+                        ref params,
+                    } if !to.is_empty() => {
+                        let p = {
+                            let mut p = Personalization::new(Email::new(&to[0].to_owned()));
+                            for x in to.iter().skip(1) {
+                                p = p.add_to(Email::new(x));
+                            }
+                            p
+                        };
 
-                    let m = Message::new(Email::new(from))
-                        .set_subject(&params.title)
-                        .add_content(
-                            Content::new()
-                                .set_content_type("text/plain")
-                                .set_value(&params.message),
-                        )
-                        .add_personalization(p);
+                        let m = Message::new(Email::new(from))
+                            .set_subject(&params.title)
+                            .add_content(
+                                Content::new()
+                                    .set_content_type("text/plain")
+                                    .set_value(&params.message),
+                            )
+                            .add_personalization(p);
 
-                    Some(async move { self.sender.send(&m).map_err(Error::from).await }.boxed())
-                }
-                _ => None,
-            });
+                        Some(async move { self.sender.send(&m).map_err(Error::from).await }.boxed())
+                    }
+                    _ => None,
+                })
+            })
+            .flatten()
+            .collect::<Vec<_>>();
 
-        try_join_all(requests).await?;
+        let _ = join_all(requests).await;
 
         Ok(rule_results)
     }
@@ -809,5 +815,5 @@ pub struct ConditionResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuleResult {
     pub condition_result: ConditionResult,
-    pub event: Event,
+    pub events: Vec<Event>,
 }

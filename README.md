@@ -6,7 +6,7 @@ Add this package to `Cargo.toml` of your project. (Check https://crates.io/crate
 
 ```toml
 [dependencies]
-json-rules-engine = { version = "0.6.0", features = ["email"] }
+json-rules-engine = { version = "0.7.0", features = ["email"] }
 tokio = { version = "0.3.3", features = ["macros"] }
 serde_json = { version = "*" }
 anyhow = { version = "*" }
@@ -45,6 +45,8 @@ fn age_greater_than20_less_than_inclusive25(p: Map) -> bool {
 
 #[tokio::main]
 async main() -> anyhow::Result<()> {
+    let sendgrid_api_key = "kjsldkjslkjlwkjkjew";
+
     let rule_json = json!({
         "conditions": {
             "and": [
@@ -71,20 +73,32 @@ async main() -> anyhow::Result<()> {
                 }
             ]
         },
-        "event": {
-            "type": "post_to_callback_url",
-            "params": {
-                "callback_url": "http://example.com/people/conding_in_rust",
-                "type": "info",
-                "title": "Another person is coding in rust",
-                "message": "Name: {{ name }}, Age: {{ age }}, Action: {{ action }},"
+        "events": [
+            {
+                "type": "post_to_callback_url",
+                "params": {
+                    "callback_url": "http://example.com/people/conding_in_rust",
+                    "type": "info",
+                    "title": "Another person is coding in rust",
+                    "message": "Name: {{ name }}, Age: {{ age }}, Action: {{ action }},"
+                }
+            },
+            {
+                "type": "email_notification",
+                "params": {
+                    "from": "alex_cj96@foxmail.com",
+                    "to": ["abc.def@gmail.com"],
+                    "type": "info",
+                    "title": "Another person is coding in rust",
+                    "message": "Name: {{ name }}, Age: {{ age }}, Action: {{ action }},"
+                }
             }
-        }
+        ]
     });
 
     let rule: Rule = serde_json::from_str::<Rule>(&serde_json::to_string(&rule_json).unwrap()).unwrap();
 
-    let mut engine = Engine::new();
+    let mut engine = Engine::new(sendgrid_api_key);
     engine.add_rule(rule);
     engine.add_function("my_function", age_greater_than20_less_than_inclusive25);
 
