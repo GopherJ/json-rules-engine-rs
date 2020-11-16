@@ -61,7 +61,8 @@ mod core;
 mod error;
 
 pub use crate::core::{
-    Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule, RuleResult, Status,
+    Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule,
+    RuleResult, Status,
 };
 
 pub use rhai::{serde::from_dynamic, Map};
@@ -89,7 +90,10 @@ pub fn or(or: Vec<Condition>) -> Condition {
 /// Creates a `Rule` where `n` child `Rule`s must be `Met`
 ///
 /// * If `>= n` are `Met`, the result will be `Met`, otherwise it'll be `NotMet`
-pub fn at_least(should_minimum_meet: usize, conditions: Vec<Condition>) -> Condition {
+pub fn at_least(
+    should_minimum_meet: usize,
+    conditions: Vec<Condition>,
+) -> Condition {
     Condition::AtLeast {
         should_minimum_meet,
         conditions,
@@ -128,14 +132,18 @@ pub fn string_does_not_contains(field: &str, val: &str) -> Condition {
 pub fn string_in(field: &str, val: Vec<&str>) -> Condition {
     Condition::Condition {
         field: field.into(),
-        constraint: Constraint::StringIn(val.into_iter().map(ToOwned::to_owned).collect()),
+        constraint: Constraint::StringIn(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
     }
 }
 
 pub fn string_not_in(field: &str, val: Vec<&str>) -> Condition {
     Condition::Condition {
         field: field.into(),
-        constraint: Constraint::StringNotIn(val.into_iter().map(ToOwned::to_owned).collect()),
+        constraint: Constraint::StringNotIn(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
     }
 }
 
@@ -319,7 +327,10 @@ pub fn bool_equals(field: &str, val: bool) -> Condition {
 
 #[cfg(test)]
 mod tests {
-    use super::{and, at_least, bool_equals, int_equals, int_in_range, or, string_equals, Status};
+    use super::{
+        and, at_least, bool_equals, int_equals, int_in_range, or,
+        string_equals, Status,
+    };
     use serde_json::{json, Value};
 
     fn get_test_data() -> Value {
@@ -334,7 +345,8 @@ mod tests {
     fn and_rules() {
         let map = get_test_data();
         // Met & Met == Met
-        let mut root = and(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
+        let mut root =
+            and(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
         let mut res = root.check_value(&map);
 
         assert!(res.status == Status::Met);
@@ -368,7 +380,8 @@ mod tests {
     fn or_rules() {
         let map = get_test_data();
         // Met | Met == Met
-        let mut root = or(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
+        let mut root =
+            or(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
         let mut res = root.check_value(&map);
 
         assert!(res.status == Status::Met);

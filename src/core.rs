@@ -9,7 +9,10 @@ use serde_json::{json, value::to_value, Map as SerdeMap, Value};
 
 use rhai::{
     def_package,
-    packages::{ArithmeticPackage, BasicArrayPackage, BasicMapPackage, LogicPackage, Package},
+    packages::{
+        ArithmeticPackage, BasicArrayPackage, BasicMapPackage, LogicPackage,
+        Package,
+    },
     serde::to_dynamic,
     Engine as RhaiEngine, Map, RegisterFn, Scope,
 };
@@ -141,15 +144,19 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn check_value(&self, info: &Value, rhai_engine: &RhaiEngine) -> RuleResult {
+    pub fn check_value(
+        &self,
+        info: &Value,
+        rhai_engine: &RhaiEngine,
+    ) -> RuleResult {
         let condition_result = self.conditions.check_value(info, rhai_engine);
         let mut events = self.events.to_owned();
 
         for event in &mut events {
             let params = {
                 match *event {
-                    Event::Message(ref mut params)
-                    | Event::PostToCallbackUrl { ref mut params, .. } => params,
+                    Event::Message(ref mut params) => params,
+                    Event::PostToCallbackUrl { ref mut params, .. } => params,
                     #[cfg(feature = "email")]
                     Event::EmailNotification { ref mut params, .. } => params,
                 }
@@ -159,6 +166,19 @@ impl Rule {
                 .and_then(|template| template.render_to_string(info))
             {
                 params.message = message;
+            }
+
+            if let Event::PostToCallbackUrl {
+                ref mut callback_url,
+                ..
+            } = *event
+            {
+                if let Ok(new_callback_url) =
+                    mustache::compile_str(callback_url)
+                        .and_then(|template| template.render_to_string(info))
+                {
+                    *callback_url = new_callback_url;
+                }
             }
         }
 
@@ -222,13 +242,18 @@ impl Engine {
         self.rhai_engine.register_fn(fname, f);
     }
 
-    pub async fn run<T: Serialize>(&self, facts: &T) -> Result<Vec<RuleResult>> {
+    pub async fn run<T: Serialize>(
+        &self,
+        facts: &T,
+    ) -> Result<Vec<RuleResult>> {
         let facts = to_value(facts)?;
         let rule_results: Vec<RuleResult> = self
             .rules
             .iter()
             .map(|rule| rule.check_value(&facts, &self.rhai_engine))
-            .filter(|rule_result| rule_result.condition_result.status == Status::Met)
+            .filter(|rule_result| {
+                rule_result.condition_result.status == Status::Met
+            })
             .collect();
 
         let requests = rule_results
@@ -258,7 +283,9 @@ impl Engine {
                         ref params,
                     } if !to.is_empty() => {
                         let p = {
-                            let mut p = Personalization::new(Email::new(&to[0].to_owned()));
+                            let mut p = Personalization::new(Email::new(
+                                &to[0].to_owned(),
+                            ));
                             for x in to.iter().skip(1) {
                                 p = p.add_to(Email::new(x));
                             }
@@ -274,7 +301,12 @@ impl Engine {
                             )
                             .add_personalization(p);
 
-                        Some(async move { self.sender.send(&m).map_err(Error::from).await }.boxed())
+                        Some(
+                            async move {
+                                self.sender.send(&m).map_err(Error::from).await
+                            }
+                            .boxed(),
+                        )
                     }
                     _ => None,
                 })
@@ -291,7 +323,11 @@ impl Engine {
 impl Condition {
     /// Starting at this node, recursively check (depth-first) any child nodes and
     /// aggregate the results
-    pub fn check_value(&self, info: &Value, rhai_engine: &RhaiEngine) -> ConditionResult {
+    pub fn check_value(
+        &self,
+        info: &Value,
+        rhai_engine: &RhaiEngine,
+    ) -> ConditionResult {
         match *self {
             Condition::And { ref and } => {
                 let mut status = Status::Met;
