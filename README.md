@@ -22,12 +22,26 @@ anyhow = { version = "*" }
 - Built in Moustache render
 - Email notifications based on `SendGrid`
 - Safe script
+- Custom function
 
 ## Get started
 
 ```rust
-use json_rules_engine::{Engine, Rule};
+use json_rules_engine::{Engine, Rule, Map, from_dynamic};
 use serde_json::json;
+use serde::{Serialize, Deserialize};
+
+#[derive(Deserialize, Serialize)]
+struct Facts {
+    name: String,
+    age: u8,
+    action: String
+}
+
+fn age_greater_than20_less_than_inclusive25(p: Map) -> bool {
+    let facts: Facts = from_dynamic(&p.into()).unwrap();
+    facts.age > 20 && facts.age <= 25
+}
 
 #[tokio::main]
 async main() -> anyhow::Result<()> {
@@ -46,6 +60,9 @@ async main() -> anyhow::Result<()> {
                 },
                 {
                     "script": "facts.age > 20 && facts.age <= 25",
+                },
+                {
+                    "script": "my_function(facts)",
                 },
                 {
                     "field": "action",
@@ -69,6 +86,7 @@ async main() -> anyhow::Result<()> {
 
     let mut engine = Engine::new();
     engine.add_rule(rule);
+    engine.add_function("my_function", age_greater_than20_less_than_inclusive25);
 
     let facts = json!({
         "name": "Cheng JIANG",

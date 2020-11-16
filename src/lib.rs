@@ -64,6 +64,8 @@ pub use crate::core::{
     Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule, RuleResult, Status,
 };
 
+pub use rhai::{Map, serde::from_dynamic};
+
 pub use error::{Error, Result};
 
 /// Creates a `Rule` where all child `Rule`s must be `Met`
