@@ -9,13 +9,13 @@ keywords    = ["json", "rule", "rules", "engine"]
 license     = "MIT/Apache-2.0"
 name        = "json-rules-engine"
 repository  = "https://github.com/GopherJ/json-rules-engine-rs"
-version     = "0.7.3"
+version     = "0.7.4"
 
 [dependencies]
 futures-util = "0.3.8"
 mustache     = "0.9.0"
 reqwest      = { version = "0.10.8", features = ["json", "rustls-tls"] }
-rhai         = { version = "0.19.5", features = [
+rhai         = { version = "0.19.7", features = [
     "sync",
     "only_i32",
     "no_function",
