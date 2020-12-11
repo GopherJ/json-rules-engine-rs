@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "json-rules-engine"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "futures-util",
  "mustache",
