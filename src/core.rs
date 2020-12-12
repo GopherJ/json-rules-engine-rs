@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Map as SerdeMap, Value};
 
+#[cfg(feature = "eval")]
 use rhai::{
     def_package,
     packages::{
@@ -17,6 +18,7 @@ use rhai::{
     Engine as RhaiEngine, Map, RegisterFn, Scope,
 };
 
+#[cfg(feature = "eval")]
 def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
     ArithmeticPackage::init(lib);
     LogicPackage::init(lib);
@@ -103,6 +105,7 @@ pub enum Condition {
         #[serde(flatten)]
         constraint: Constraint,
     },
+    #[cfg(feature = "eval")]
     Eval {
         script: String,
     },
@@ -147,9 +150,13 @@ impl Rule {
     pub fn check_value(
         &self,
         info: &Value,
-        rhai_engine: &RhaiEngine,
+        #[cfg(feature = "eval")] rhai_engine: &RhaiEngine,
     ) -> RuleResult {
-        let condition_result = self.conditions.check_value(info, rhai_engine);
+        let condition_result = self.conditions.check_value(
+            info,
+            #[cfg(feature = "eval")]
+            rhai_engine,
+        );
         let mut events = self.events.to_owned();
 
         for event in &mut events {
@@ -195,6 +202,7 @@ pub struct Engine {
     client: Client,
     #[cfg(feature = "email")]
     sender: Sender,
+    #[cfg(feature = "eval")]
     rhai_engine: RhaiEngine,
 }
 
@@ -218,6 +226,7 @@ impl Engine {
             rules: Vec::new(),
             client: Client::new(),
             sender: Sender::new(api_key),
+            #[cfg(feature = "eval")]
             rhai_engine: {
                 let mut engine = RhaiEngine::new_raw();
                 engine.load_package(JsonRulesEnginePackage::new().get());
@@ -238,6 +247,7 @@ impl Engine {
         self.rules.clear();
     }
 
+    #[cfg(feature = "eval")]
     pub fn add_function(&mut self, fname: &str, f: fn(Map) -> bool) {
         self.rhai_engine.register_fn(fname, f);
     }
@@ -250,7 +260,13 @@ impl Engine {
         let rule_results: Vec<RuleResult> = self
             .rules
             .iter()
-            .map(|rule| rule.check_value(&facts, &self.rhai_engine))
+            .map(|rule| {
+                rule.check_value(
+                    &facts,
+                    #[cfg(feature = "eval")]
+                    &self.rhai_engine,
+                )
+            })
             .filter(|rule_result| {
                 rule_result.condition_result.status == Status::Met
             })
@@ -326,14 +342,20 @@ impl Condition {
     pub fn check_value(
         &self,
         info: &Value,
-        rhai_engine: &RhaiEngine,
+        #[cfg(feature = "eval")] rhai_engine: &RhaiEngine,
     ) -> ConditionResult {
         match *self {
             Condition::And { ref and } => {
                 let mut status = Status::Met;
                 let children = and
                     .iter()
-                    .map(|c| c.check_value(info, rhai_engine))
+                    .map(|c| {
+                        c.check_value(
+                            info,
+                            #[cfg(feature = "eval")]
+                            rhai_engine,
+                        )
+                    })
                     .inspect(|r| status = status & r.status)
                     .collect::<Vec<_>>();
 
@@ -347,7 +369,13 @@ impl Condition {
                 let mut status = Status::NotMet;
                 let children = or
                     .iter()
-                    .map(|c| c.check_value(info, rhai_engine))
+                    .map(|c| {
+                        c.check_value(
+                            info,
+                            #[cfg(feature = "eval")]
+                            rhai_engine,
+                        )
+                    })
                     .inspect(|r| status = status | r.status)
                     .collect::<Vec<_>>();
 
@@ -364,7 +392,13 @@ impl Condition {
                 let mut met_count = 0;
                 let children = conditions
                     .iter()
-                    .map(|c| c.check_value(info, rhai_engine))
+                    .map(|c| {
+                        c.check_value(
+                            info,
+                            #[cfg(feature = "eval")]
+                            rhai_engine,
+                        )
+                    })
                     .inspect(|r| {
                         if r.status == Status::Met {
                             met_count += 1;
@@ -410,6 +444,7 @@ impl Condition {
                     children: Vec::new(),
                 }
             }
+            #[cfg(feature = "eval")]
             Condition::Eval { ref script } => {
                 let mut scope = Scope::new();
                 if let Ok(val) = to_dynamic(info) {

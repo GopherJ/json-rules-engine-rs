@@ -65,6 +65,7 @@ pub use crate::core::{
     RuleResult, Status,
 };
 
+#[cfg(feature = "eval")]
 pub use rhai::{serde::from_dynamic, Map};
 
 pub use error::{Error, Result};
