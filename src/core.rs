@@ -1,6 +1,10 @@
 use crate::error::{Error, Result};
 
-use std::ops::{BitAnd, BitOr, Not};
+use std::{
+    collections::HashMap,
+    ops::{BitAnd, BitOr, Not},
+    time::Instant,
+};
 
 use futures_util::future::{join_all, FutureExt, TryFutureExt};
 use reqwest::Client;
@@ -140,10 +144,19 @@ pub enum Event {
     },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CoalescenceEvent {
+    coalescence: Option<u64>,
+    coalescence_group: Option<String>,
+    #[serde(flatten)]
+    event: Event,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Rule {
     pub conditions: Condition,
-    pub events: Vec<Event>,
+    pub events: Vec<CoalescenceEvent>,
 }
 
 impl Rule {
@@ -157,16 +170,20 @@ impl Rule {
             #[cfg(feature = "eval")]
             rhai_engine,
         );
+
         let mut events = self.events.to_owned();
 
-        for event in &mut events {
-            let params = {
-                match *event {
-                    Event::Message(ref mut params) => params,
-                    Event::PostToCallbackUrl { ref mut params, .. } => params,
-                    #[cfg(feature = "email")]
-                    Event::EmailNotification { ref mut params, .. } => params,
-                }
+        for CoalescenceEvent {
+            event,
+            coalescence_group,
+            ..
+        } in &mut events
+        {
+            let params = match event {
+                Event::Message(ref mut params) => params,
+                Event::PostToCallbackUrl { ref mut params, .. } => params,
+                #[cfg(feature = "email")]
+                Event::EmailNotification { ref mut params, .. } => params,
             };
 
             if let Ok(message) = mustache::compile_str(&params.message)
@@ -178,13 +195,22 @@ impl Rule {
             if let Event::PostToCallbackUrl {
                 ref mut callback_url,
                 ..
-            } = *event
+            } = event
             {
                 if let Ok(new_callback_url) =
                     mustache::compile_str(callback_url)
                         .and_then(|template| template.render_to_string(info))
                 {
                     *callback_url = new_callback_url;
+                }
+            }
+
+            if let Some(coalescence_group) = coalescence_group {
+                if let Ok(new_coalescence_group) =
+                    mustache::compile_str(coalescence_group)
+                        .and_then(|template| template.render_to_string(info))
+                {
+                    *coalescence_group = new_coalescence_group;
                 }
             }
         }
@@ -204,34 +230,23 @@ pub struct Engine {
     sender: Sender,
     #[cfg(feature = "eval")]
     rhai_engine: RhaiEngine,
+    coalescences: HashMap<String, (Instant, u64)>,
 }
 
 impl Engine {
-    #[cfg(not(feature = "email"))]
-    pub fn new() -> Self {
+    pub fn new<S: Into<String>>(#[cfg(feature = "email")] api_key: S) -> Self {
         Self {
             rules: Vec::new(),
             client: Client::new(),
-            rhai_engine: {
-                let mut engine = RhaiEngine::new_raw();
-                engine.load_package(JsonRulesEnginePackage::new().get());
-                engine
-            },
-        }
-    }
-
-    #[cfg(feature = "email")]
-    pub fn new(api_key: String) -> Self {
-        Self {
-            rules: Vec::new(),
-            client: Client::new(),
-            sender: Sender::new(api_key),
+            #[cfg(feature = "email")]
+            sender: Sender::new(api_key.into()),
             #[cfg(feature = "eval")]
             rhai_engine: {
                 let mut engine = RhaiEngine::new_raw();
                 engine.load_package(JsonRulesEnginePackage::new().get());
                 engine
             },
+            coalescences: HashMap::new(),
         }
     }
 
@@ -253,11 +268,11 @@ impl Engine {
     }
 
     pub async fn run<T: Serialize>(
-        &self,
+        &mut self,
         facts: &T,
     ) -> Result<Vec<RuleResult>> {
         let facts = to_value(facts)?;
-        let rule_results: Vec<RuleResult> = self
+        let mut rule_results: Vec<RuleResult> = self
             .rules
             .iter()
             .map(|rule| {
@@ -272,60 +287,90 @@ impl Engine {
             })
             .collect();
 
+        self.coalescences.retain(|_k, (start, expiration)| {
+            start.elapsed().as_secs() < *expiration
+        });
+
+        for rule_result in rule_results.iter_mut() {
+            rule_result.events.retain(|event| {
+                if let (Some(coalescence_group), Some(coalescence)) = (
+                    event.coalescence_group.to_owned(),
+                    event.coalescence.to_owned(),
+                ) {
+                    if self.coalescences.contains_key(&coalescence_group) {
+                        return false;
+                    } else {
+                        self.coalescences.insert(
+                            coalescence_group,
+                            (Instant::now(), coalescence),
+                        );
+                    }
+                }
+
+                true
+            });
+        }
+
         let requests = rule_results
             .iter()
             .map(|rule_result| {
-                rule_result.events.iter().filter_map(|event| match event {
-                    Event::PostToCallbackUrl {
-                        ref callback_url,
-                        ref params,
-                        ref app_data,
-                    } => Some(
-                        self.client
-                            .post(callback_url)
-                            .json(&json!({
-                                "event": params,
-                                "facts": &facts,
-                                "app_data": app_data
-                            }))
-                            .send()
-                            .map_err(Error::from)
-                            .boxed(),
-                    ),
-                    #[cfg(feature = "email")]
-                    Event::EmailNotification {
-                        ref from,
-                        ref to,
-                        ref params,
-                    } if !to.is_empty() => {
-                        let p = {
-                            let mut p = Personalization::new(Email::new(
-                                &to[0].to_owned(),
-                            ));
-                            for x in to.iter().skip(1) {
-                                p = p.add_to(Email::new(x));
-                            }
-                            p
-                        };
+                rule_result
+                    .events
+                    .iter()
+                    .map(|CoalescenceEvent { event, .. }| {
+                        (event, self.client.clone(), self.sender.clone())
+                    })
+                    .filter_map(|(event, client, sender)| match event {
+                        Event::PostToCallbackUrl {
+                            ref callback_url,
+                            ref params,
+                            ref app_data,
+                        } => Some(
+                            client
+                                .post(callback_url)
+                                .json(&json!({
+                                    "event": params,
+                                    "facts": &facts,
+                                    "app_data": app_data
+                                }))
+                                .send()
+                                .map_err(Error::from)
+                                .boxed(),
+                        ),
+                        #[cfg(feature = "email")]
+                        Event::EmailNotification {
+                            ref from,
+                            ref to,
+                            ref params,
+                        } if !to.is_empty() => {
+                            let p = {
+                                let mut p = Personalization::new(Email::new(
+                                    &to[0].to_owned(),
+                                ));
+                                for x in to.iter().skip(1) {
+                                    p = p.add_to(Email::new(x));
+                                }
+                                p
+                            };
 
-                        let m = Message::new(Email::new(from))
-                            .set_subject(&params.title)
-                            .add_content(
-                                Content::new()
-                                    .set_content_type("text/plain")
-                                    .set_value(&params.message),
+                            let m = Message::new(Email::new(from))
+                                .set_subject(&params.title)
+                                .add_content(
+                                    Content::new()
+                                        .set_content_type("text/plain")
+                                        .set_value(&params.message),
+                                )
+                                .add_personalization(p);
+
+                            Some(
+                                async move {
+                                    sender.send(&m).map_err(Error::from).await
+                                }
+                                .boxed(),
                             )
-                            .add_personalization(p);
-
-                        Some(
-                            async move {
-                                self.sender.send(&m).map_err(Error::from).await
-                            }
-                            .boxed(),
-                        )
-                    }
-                    _ => None,
-                })
+                        }
+                        _ => None,
+                    })
             })
             .flatten()
             .collect::<Vec<_>>();
@@ -898,5 +943,5 @@ pub struct ConditionResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuleResult {
     pub condition_result: ConditionResult,
-    pub events: Vec<Event>,
+    pub events: Vec<CoalescenceEvent>,
 }
