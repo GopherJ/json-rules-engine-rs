@@ -1,21 +1,21 @@
 [package]
-authors     = [
+authors = [
     "Cheng JIANG <alex_cj96@foxmail.com>",
     "Benn Sundsrud <benn.sundsrud@gmail.com>",
 ]
 description = "json rules engine"
-edition     = "2018"
-keywords    = ["json", "rule", "rules", "engine"]
-license     = "MIT/Apache-2.0"
-name        = "json-rules-engine"
-repository  = "https://github.com/GopherJ/json-rules-engine-rs"
-version     = "0.8.0"
+edition = "2018"
+keywords = ["json", "rule", "rules", "engine"]
+license = "MIT/Apache-2.0"
+name = "json-rules-engine"
+repository = "https://github.com/GopherJ/json-rules-engine-rs"
+version = "0.9.0"
 
 [dependencies]
 futures-util = "0.3.8"
-mustache     = "0.9.0"
-reqwest      = { version = "0.10.8", features = ["json", "rustls-tls"] }
-rhai         = { version = "0.19.7", features = [
+mustache = "0.9.0"
+reqwest = { version = "0.10.8", features = ["json", "rustls-tls"] }
+rhai = { version = "0.19.7", features = [
     "sync",
     "f32_float",
     "no_function",
@@ -26,10 +26,10 @@ rhai         = { version = "0.19.7", features = [
     "serde",
     "unchecked",
 ], optional = true }
-sendgrid     = { version = "0.15.0", default-features = false, features = ["async", "rustls"], optional = true }
-serde        = { version = "1.0.117", features = ["derive"] }
-serde_json   = { version = "1.0.59" }
-thiserror    = "1.0.22"
+sendgrid = { version = "0.15.0", default-features = false, features = ["async", "rustls"], optional = true }
+serde = { version = "1.0.117", features = ["derive"] }
+serde_json = { version = "1.0.59" }
+thiserror = "1.0.22"
 
 [features]
 default = ["email"]

@@ -111,7 +111,7 @@ pub enum Condition {
     },
     #[cfg(feature = "eval")]
     Eval {
-        script: String,
+        expr: String,
     },
 }
 
@@ -256,6 +256,10 @@ impl Engine {
 
     pub fn add_rules(&mut self, rules: Vec<Rule>) {
         self.rules.extend(rules)
+    }
+
+    pub fn load_rules(&mut self, rules: Vec<Rule>) {
+        self.rules = rules;
     }
 
     pub fn clear(&mut self) {
@@ -490,13 +494,13 @@ impl Condition {
                 }
             }
             #[cfg(feature = "eval")]
-            Condition::Eval { ref script } => {
+            Condition::Eval { ref expr } => {
                 let mut scope = Scope::new();
                 if let Ok(val) = to_dynamic(info) {
                     scope.push_dynamic("facts", val);
                 }
                 let status = if rhai_engine
-                    .eval_with_scope::<bool>(&mut scope, script)
+                    .eval_with_scope::<bool>(&mut scope, expr)
                     .unwrap_or(false)
                 {
                     Status::Met
@@ -524,13 +528,19 @@ pub enum Constraint {
     StringEquals(String),
     StringNotEquals(String),
     StringContains(String),
+    StringContainsAll(Vec<String>),
+    StringContainsAny(Vec<String>),
     StringDoesNotContain(String),
+    StringDoesNotContainAny(Vec<String>),
     StringIn(Vec<String>),
     StringNotIn(Vec<String>),
     IntEquals(i64),
     IntNotEquals(i64),
     IntContains(i64),
+    IntContainsAll(Vec<i64>),
+    IntContainsAny(Vec<i64>),
     IntDoesNotContain(i64),
+    IntDoesNotContainAny(Vec<i64>),
     IntIn(Vec<i64>),
     IntNotIn(Vec<i64>),
     IntInRange(i64, i64),
@@ -594,6 +604,36 @@ impl Constraint {
                     Status::NotMet
                 }
             }
+            Constraint::StringContainsAll(ref s) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_str())
+                        .collect::<Vec<&str>>()
+                }) {
+                    if s.iter().all(|y| v.contains(&y.as_str())) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
+            Constraint::StringContainsAny(ref s) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_str())
+                        .collect::<Vec<&str>>()
+                }) {
+                    if s.iter().any(|y| v.contains(&y.as_str())) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
             Constraint::StringDoesNotContain(ref s) => {
                 if let Some(v) = v.as_array().map(|x| {
                     x.into_iter()
@@ -601,6 +641,21 @@ impl Constraint {
                         .collect::<Vec<&str>>()
                 }) {
                     if !v.contains(&s.as_str()) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
+            Constraint::StringDoesNotContainAny(ref s) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_str())
+                        .collect::<Vec<&str>>()
+                }) {
+                    if s.iter().all(|y| !v.contains(&y.as_str())) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -632,8 +687,8 @@ impl Constraint {
                 }
             }
             Constraint::IntEquals(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val == num {
+                if let Some(v) = v.as_i64() {
+                    if v == num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -643,8 +698,8 @@ impl Constraint {
                 }
             }
             Constraint::IntNotEquals(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val != num {
+                if let Some(v) = v.as_i64() {
+                    if v != num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -654,12 +709,42 @@ impl Constraint {
                 }
             }
             Constraint::IntContains(num) => {
-                if let Some(val) = v.as_array().map(|x| {
+                if let Some(v) = v.as_array().map(|x| {
                     x.into_iter()
                         .filter_map(|y| y.as_i64())
                         .collect::<Vec<i64>>()
                 }) {
-                    if val.contains(&num) {
+                    if v.contains(&num) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
+            Constraint::IntContainsAll(ref nums) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_i64())
+                        .collect::<Vec<i64>>()
+                }) {
+                    if nums.into_iter().all(|num| v.contains(&num)) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
+            Constraint::IntContainsAny(ref nums) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_i64())
+                        .collect::<Vec<i64>>()
+                }) {
+                    if nums.into_iter().any(|num| v.contains(&num)) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -669,12 +754,27 @@ impl Constraint {
                 }
             }
             Constraint::IntDoesNotContain(num) => {
-                if let Some(val) = v.as_array().map(|x| {
+                if let Some(v) = v.as_array().map(|x| {
                     x.into_iter()
                         .filter_map(|y| y.as_i64())
                         .collect::<Vec<i64>>()
                 }) {
-                    if !val.contains(&num) {
+                    if !v.contains(&num) {
+                        Status::Met
+                    } else {
+                        Status::NotMet
+                    }
+                } else {
+                    Status::NotMet
+                }
+            }
+            Constraint::IntDoesNotContainAny(ref nums) => {
+                if let Some(v) = v.as_array().map(|x| {
+                    x.into_iter()
+                        .filter_map(|y| y.as_i64())
+                        .collect::<Vec<i64>>()
+                }) {
+                    if nums.into_iter().all(|num| !v.contains(&num)) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -684,8 +784,8 @@ impl Constraint {
                 }
             }
             Constraint::IntIn(ref nums) => {
-                if let Some(val) = v.as_i64() {
-                    if nums.iter().any(|&num| num == val) {
+                if let Some(v) = v.as_i64() {
+                    if nums.iter().any(|&num| num == v) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -695,8 +795,8 @@ impl Constraint {
                 }
             }
             Constraint::IntNotIn(ref nums) => {
-                if let Some(val) = v.as_i64() {
-                    if nums.iter().all(|&num| num != val) {
+                if let Some(v) = v.as_i64() {
+                    if nums.iter().all(|&num| num != v) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -706,8 +806,8 @@ impl Constraint {
                 }
             }
             Constraint::IntInRange(start, end) => {
-                if let Some(val) = v.as_i64() {
-                    if start <= val && val <= end {
+                if let Some(v) = v.as_i64() {
+                    if start <= v && v <= end {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -717,8 +817,8 @@ impl Constraint {
                 }
             }
             Constraint::IntNotInRange(start, end) => {
-                if let Some(val) = v.as_i64() {
-                    if start <= val && val <= end {
+                if let Some(v) = v.as_i64() {
+                    if start <= v && v <= end {
                         Status::NotMet
                     } else {
                         Status::Met
@@ -728,8 +828,8 @@ impl Constraint {
                 }
             }
             Constraint::IntLessThan(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val < num {
+                if let Some(v) = v.as_i64() {
+                    if v < num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -739,8 +839,8 @@ impl Constraint {
                 }
             }
             Constraint::IntLessThanInclusive(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val <= num {
+                if let Some(v) = v.as_i64() {
+                    if v <= num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -750,8 +850,8 @@ impl Constraint {
                 }
             }
             Constraint::IntGreaterThan(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val > num {
+                if let Some(v) = v.as_i64() {
+                    if v > num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -761,8 +861,8 @@ impl Constraint {
                 }
             }
             Constraint::IntGreaterThanInclusive(num) => {
-                if let Some(val) = v.as_i64() {
-                    if val >= num {
+                if let Some(v) = v.as_i64() {
+                    if v >= num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -772,8 +872,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatEquals(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val == num {
+                if let Some(v) = v.as_f64() {
+                    if v == num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -783,8 +883,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatNotEquals(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val != num {
+                if let Some(v) = v.as_f64() {
+                    if v != num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -794,12 +894,12 @@ impl Constraint {
                 }
             }
             Constraint::FloatContains(num) => {
-                if let Some(val) = v.as_array().map(|x| {
+                if let Some(v) = v.as_array().map(|x| {
                     x.into_iter()
                         .filter_map(|y| y.as_f64())
                         .collect::<Vec<f64>>()
                 }) {
-                    if val.contains(&num) {
+                    if v.contains(&num) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -809,12 +909,12 @@ impl Constraint {
                 }
             }
             Constraint::FloatDoesNotContain(num) => {
-                if let Some(val) = v.as_array().map(|x| {
+                if let Some(v) = v.as_array().map(|x| {
                     x.into_iter()
                         .filter_map(|y| y.as_f64())
                         .collect::<Vec<f64>>()
                 }) {
-                    if !val.contains(&num) {
+                    if !v.contains(&num) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -824,8 +924,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatIn(ref nums) => {
-                if let Some(val) = v.as_f64() {
-                    if nums.iter().any(|&num| num == val) {
+                if let Some(v) = v.as_f64() {
+                    if nums.iter().any(|&num| num == v) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -835,8 +935,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatNotIn(ref nums) => {
-                if let Some(val) = v.as_f64() {
-                    if nums.iter().all(|&num| num != val) {
+                if let Some(v) = v.as_f64() {
+                    if nums.iter().all(|&num| num != v) {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -846,8 +946,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatInRange(start, end) => {
-                if let Some(val) = v.as_f64() {
-                    if start <= val && val <= end {
+                if let Some(v) = v.as_f64() {
+                    if start <= v && v <= end {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -857,8 +957,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatNotInRange(start, end) => {
-                if let Some(val) = v.as_f64() {
-                    if start <= val && val <= end {
+                if let Some(v) = v.as_f64() {
+                    if start <= v && v <= end {
                         Status::NotMet
                     } else {
                         Status::Met
@@ -868,8 +968,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatLessThan(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val < num {
+                if let Some(v) = v.as_f64() {
+                    if v < num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -879,8 +979,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatLessThanInclusive(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val <= num {
+                if let Some(v) = v.as_f64() {
+                    if v <= num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -890,8 +990,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatGreaterThan(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val > num {
+                if let Some(v) = v.as_f64() {
+                    if v > num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -901,8 +1001,8 @@ impl Constraint {
                 }
             }
             Constraint::FloatGreaterThanInclusive(num) => {
-                if let Some(val) = v.as_f64() {
-                    if val >= num {
+                if let Some(v) = v.as_f64() {
+                    if v >= num {
                         Status::Met
                     } else {
                         Status::NotMet
@@ -912,8 +1012,8 @@ impl Constraint {
                 }
             }
             Constraint::BoolEquals(b) => {
-                if let Some(val) = v.as_bool() {
-                    if val == b {
+                if let Some(v) = v.as_bool() {
+                    if v == b {
                         Status::Met
                     } else {
                         Status::NotMet

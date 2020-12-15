@@ -6,7 +6,7 @@ Add this package to `Cargo.toml` of your project. (Check https://crates.io/crate
 
 ```toml
 [dependencies]
-json-rules-engine = { version = "0.8.0", features = ["email", "eval"] }
+json-rules-engine = { version = "0.9.0", features = ["email", "eval"] }
 tokio = { version = "0.3.3", features = ["macros"] }
 serde_json = { version = "*" }
 anyhow = { version = "*" }
@@ -23,6 +23,7 @@ anyhow = { version = "*" }
 - Email notifications based on `SendGrid`
 - Safe script
 - Custom function
+- Coalescence Group
 
 ## Get started
 
@@ -61,10 +62,14 @@ async main() -> anyhow::Result<()> {
                     "value": [20, 25] 
                 },
                 {
-                    "script": "facts.age > 20 && facts.age <= 25",
-                },
-                {
-                    "script": "my_function(facts)",
+                    "and": [
+                        {
+                            "expr": "facts.age > 20 && facts.age <= 25",
+                        },
+                        {
+                            "expr": "my_function(facts)",
+                        },
+                    ]
                 },
                 {
                     "field": "action",
@@ -77,10 +82,10 @@ async main() -> anyhow::Result<()> {
             {
                 "type": "post_to_callback_url",
                 "params": {
-                    "callback_url": "http://example.com/people/conding_in_rust",
+                    "callback_url": "http://example.com/peoples/conding_in_rust",
                     "type": "info",
                     "title": "Another person is coding in rust",
-                    "message": "Name: {{ name }}, Age: {{ age }}, Action: {{ action }},"
+                    "message": "Name: {{ name }}, Age: {{ age }}, Action: {{ action }}"
                 }
             },
             {

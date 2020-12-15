@@ -123,10 +123,37 @@ pub fn string_contains(field: &str, val: &str) -> Condition {
     }
 }
 
-pub fn string_does_not_contains(field: &str, val: &str) -> Condition {
+pub fn string_contains_all(field: &str, val: Vec<&str>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::StringContainsAll(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
+    }
+}
+
+pub fn string_contains_any(field: &str, val: Vec<&str>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::StringContainsAny(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
+    }
+}
+
+pub fn string_does_not_contain(field: &str, val: &str) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::StringDoesNotContain(val.into()),
+    }
+}
+
+pub fn string_does_not_contain_any(field: &str, val: Vec<&str>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::StringDoesNotContainAny(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
     }
 }
 
@@ -170,10 +197,31 @@ pub fn int_contains(field: &str, val: i64) -> Condition {
     }
 }
 
+pub fn int_contains_all(field: &str, val: Vec<i64>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::IntContainsAll(val),
+    }
+}
+
+pub fn int_contains_any(field: &str, val: Vec<i64>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::IntContainsAny(val),
+    }
+}
+
 pub fn int_does_not_contain(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntDoesNotContain(val),
+    }
+}
+
+pub fn int_does_not_contain_any(field: &str, val: Vec<i64>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::IntDoesNotContainAny(val),
     }
 }
 
