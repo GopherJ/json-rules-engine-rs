@@ -15,7 +15,7 @@ anyhow = { version = "*" }
 ## Features
 
 - Built in operators
-- Full support for `ALL`, `ANY`, `AtLeast` boolean operators, including recursive nesting
+- Full support for `ALL`, `OR`, `AtLeast` boolean operators, including recursive nesting
 - Type Safe
 - Load rules from json
 - HTTP post to callback url
