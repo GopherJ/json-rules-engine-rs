@@ -100,6 +100,9 @@ pub enum Condition {
     Or {
         or: Vec<Condition>,
     },
+    Not {
+        not: Box<Condition>,
+    },
     AtLeast {
         should_minimum_meet: usize,
         conditions: Vec<Condition>,
@@ -412,6 +415,19 @@ impl Condition {
                     name: "And".into(),
                     status,
                     children,
+                }
+            }
+            Condition::Not { not: ref c } => {
+                let res = c.check_value(
+                    info,
+                    #[cfg(feature = "eval")]
+                    rhai_engine,
+                );
+
+                ConditionResult {
+                    name: "Not".into(),
+                    status: !res.status,
+                    children: res.children,
                 }
             }
             Condition::Or { ref or } => {
