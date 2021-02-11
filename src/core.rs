@@ -3,14 +3,14 @@ use crate::error::{Error, Result};
 use std::{
     collections::HashMap,
     ops::{BitAnd, BitOr, Not},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use futures_util::{
     future::{FutureExt, TryFutureExt},
     stream, StreamExt,
 };
-use reqwest::{Client, ClientBuilder};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Map as SerdeMap, Value};
 
@@ -243,10 +243,7 @@ impl Engine {
     pub fn new<S: Into<String>>(#[cfg(feature = "email")] api_key: S) -> Self {
         Self {
             rules: Vec::new(),
-            client: ClientBuilder::new()
-                .tcp_keepalive(Some(Duration::from_secs(10)))
-                .build()
-                .unwrap(),
+            client: Client::new(),
             #[cfg(feature = "email")]
             sender: Sender::new(api_key.into()),
             #[cfg(feature = "eval")]
