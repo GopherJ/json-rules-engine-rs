@@ -6,7 +6,7 @@ Add this package to `Cargo.toml` of your project. (Check https://crates.io/crate
 
 ```toml
 [dependencies]
-json-rules-engine = { version = "0.9.0", features = ["email", "eval"] }
+json-rules-engine = { version = "0.9", features = ["email", "eval"] }
 tokio = { version = "0.3.3", features = ["macros"] }
 serde_json = { version = "*" }
 anyhow = { version = "*" }
@@ -14,16 +14,16 @@ anyhow = { version = "*" }
 
 ## Features
 
-- Built in operators
-- Full support for `ALL`, `OR`, `Not`, `AtLeast` boolean operators, including recursive nesting
-- Type Safe
-- Load rules from json
-- HTTP post to callback url
-- Built in Moustache render
-- Email notifications based on `SendGrid`
-- Safe script
-- Custom function
-- Coalescence Group
+-   Built in operators
+-   Full support for `ALL`, `OR`, `Not`, `AtLeast` boolean operators, including recursive nesting
+-   Type Safe
+-   Load rules from json
+-   HTTP post to callback url
+-   Built in Moustache render
+-   Email notifications based on `SendGrid`
+-   Safe script
+-   Custom function
+-   Coalescence Group
 
 ## Get started
 
@@ -59,7 +59,7 @@ async main() -> anyhow::Result<()> {
                 {
                     "field": "age",
                     "operator": "int_in_range",
-                    "value": [20, 25] 
+                    "value": [20, 25]
                 },
                 {
                     "and": [
@@ -121,4 +121,4 @@ async main() -> anyhow::Result<()> {
 
 ## Special Thanks
 
-- [bsundsrud](https://github.com/bsundsrud) for its basic implementation [ruuls-rs](https://github.com/bsundsrud/ruuls-rs)
+-   [bsundsrud](https://github.com/bsundsrud) for its basic implementation [ruuls-rs](https://github.com/bsundsrud/ruuls-rs)

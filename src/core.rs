@@ -3,11 +3,14 @@ use crate::error::{Error, Result};
 use std::{
     collections::HashMap,
     ops::{BitAnd, BitOr, Not},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use futures_util::future::{join_all, FutureExt, TryFutureExt};
-use reqwest::Client;
+use futures_util::{
+    future::{FutureExt, TryFutureExt},
+    stream, StreamExt,
+};
+use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, value::to_value, Map as SerdeMap, Value};
 
@@ -240,7 +243,10 @@ impl Engine {
     pub fn new<S: Into<String>>(#[cfg(feature = "email")] api_key: S) -> Self {
         Self {
             rules: Vec::new(),
-            client: Client::new(),
+            client: ClientBuilder::new()
+                .tcp_keepalive(Some(Duration::from_secs(10)))
+                .build()
+                .unwrap(),
             #[cfg(feature = "email")]
             sender: Sender::new(api_key.into()),
             #[cfg(feature = "eval")]
@@ -382,7 +388,10 @@ impl Engine {
             .flatten()
             .collect::<Vec<_>>();
 
-        let _ = join_all(requests).await;
+        let _ = stream::iter(requests)
+            .buffer_unordered(3)
+            .collect::<Vec<Result<_>>>()
+            .await;
 
         Ok(rule_results)
     }
