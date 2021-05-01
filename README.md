@@ -23,8 +23,8 @@ anyhow = { version = "*" }
 - Custom function
 - Custom event
 - Coalescence Group
-- Existing event:
-  - HTTP post to callback url 
+- Existing events:
+  - HTTP POST to callback url 
   - Email notifications based on `SendGrid`
 
 ## Get started

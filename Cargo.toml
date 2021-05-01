@@ -36,7 +36,7 @@ tokio = { version = "1", features = ["full"] }
 #anyhow = "1"
 
 [features]
-default = ["eval"]
+default = []
 
 callback = ["reqwest"]
 email = ["sendgrid", "futures-util"]
