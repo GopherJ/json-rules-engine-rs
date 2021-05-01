@@ -14,16 +14,18 @@ anyhow = { version = "*" }
 
 ## Features
 
--   Built in operators
--   Full support for `ALL`, `OR`, `Not`, `AtLeast` boolean operators, including recursive nesting
--   Type Safe
--   Load rules from json
--   HTTP post to callback url
--   Built in Moustache render
--   Email notifications based on `SendGrid`
--   Safe script
--   Custom function
--   Coalescence Group
+- Built in operators
+- Full support for `ALL`, `OR`, `Not`, `AtLeast` boolean operators, including recursive nesting
+- Type Safe
+- Load rules from json
+- Built in Moustache render
+- Safe script
+- Custom function
+- Custom event
+- Coalescence Group
+- Existing event:
+  - HTTP post to callback url 
+  - Email notifications based on `SendGrid`
 
 ## Get started
 
@@ -45,7 +47,7 @@ fn age_greater_than20_less_than_inclusive25(p: Map) -> bool {
 }
 
 #[tokio::main]
-async main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<()> {
     let sendgrid_api_key = "kjsldkjslkjlwkjkjew";
 
     let rule_json = json!({
@@ -103,7 +105,7 @@ async main() -> anyhow::Result<()> {
 
     let rule: Rule = serde_json::from_str::<Rule>(&serde_json::to_string(&rule_json).unwrap()).unwrap();
 
-    let mut engine = Engine::new(sendgrid_api_key);
+    let mut engine = Engine::new();
     engine.add_rule(rule);
     engine.add_function("my_function", age_greater_than20_less_than_inclusive25);
 
@@ -115,7 +117,7 @@ async main() -> anyhow::Result<()> {
 
     let rule_results = engine.run(&facts).await?;
 
-    println!("{:?}", rule_results);
+    println!("{:#?}", rule_results);
 }
 ```
 

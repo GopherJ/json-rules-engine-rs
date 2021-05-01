@@ -25,9 +25,12 @@
 //!     "name": "John Doe",
 //!     "fav_number": 5
 //! });
-//! let result = tree.check_value(&facts);
-//! println!("{:?}", result);
-//! assert!(result.status == json_rules_engine::Status::Met);
+//! #[cfg(not(feature = "eval"))]
+//! {
+//!     let result = tree.check_value(&facts);
+//!     println!("{:?}", result);
+//!     assert!(result.status == json_rules_engine::Status::Met);
+//! }
 //! // result = ConditionResult { name: "And", status: Met, children: [ConditionResult { name: "Name is John Doe", status: Met, children: [] }, ConditionResult { name: "Or", status: Met, children: [ConditionResult { name: "Favorite number is 5", status: Met, children: [] }, ConditionResult { name: "Thinking of a number between 5 and 10", status: Unknown, children: [] }] }] }
 //! ```
 //!
@@ -57,520 +60,174 @@
 //!
 //! [1]: enum.Rule.html#method.check
 
-mod core;
+mod condition;
+mod constraint;
 mod error;
+mod event;
+mod rule;
+mod status;
 
-pub use crate::core::{
-    Condition, ConditionResult, Constraint, Engine, Event, EventParams, Rule,
-    RuleResult, Status,
-};
+pub use crate::{condition::*, constraint::*, event::*, rule::*, status::*};
 
 #[cfg(feature = "eval")]
 pub use rhai::{serde::from_dynamic, Map};
 
-pub use error::{Error, Result};
+#[cfg(feature = "eval")]
+use rhai::{
+    def_package,
+    packages::{
+        ArithmeticPackage, BasicArrayPackage, BasicMapPackage, LogicPackage,
+        Package,
+    },
+    Engine as RhaiEngine,
+};
+use serde_json::value::to_value;
+use std::{collections::HashMap, time::Instant};
 
-/// Creates a `Rule` where all child `Rule`s must be `Met`
-///
-/// * If any are `NotMet`, the result will be `NotMet`
-/// * If the results contain only `Met` and `Unknown`, the result will be `Unknown`
-/// * Only results in `Met` if all children are `Met`
-pub fn and(and: Vec<Condition>) -> Condition {
-    Condition::And { and }
+#[cfg(feature = "email")]
+use crate::event::email_notification::EmailNotification;
+#[cfg(feature = "callback")]
+use crate::event::post_callback::PostCallback;
+
+pub use crate::error::*;
+use serde::Serialize;
+
+#[cfg(feature = "eval")]
+def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
+    ArithmeticPackage::init(lib);
+    LogicPackage::init(lib);
+    BasicArrayPackage::init(lib);
+    BasicMapPackage::init(lib);
+});
+
+#[derive(Default)]
+pub struct Engine {
+    rules: Vec<Rule>,
+    events: HashMap<String, Box<dyn EventTrait>>,
+    #[cfg(feature = "eval")]
+    rhai_engine: RhaiEngine,
+    coalescences: HashMap<String, (Instant, u64)>,
 }
 
-/// Creates a `Rule` where any child `Rule` must be `Met`
-///
-/// * If any are `Met`, the result will be `Met`
-/// * If the results contain only `NotMet` and `Unknown`, the result will be `Unknown`
-/// * Only results in `NotMet` if all children are `NotMet`
-pub fn or(or: Vec<Condition>) -> Condition {
-    Condition::Or { or }
-}
+impl Engine {
+    pub fn new() -> Self {
+        #[allow(unused_mut)]
+        let mut events: HashMap<_, Box<dyn EventTrait>> = HashMap::new();
 
-/// Creates a `Rule` where `n` child `Rule`s must be `Met`
-///
-/// * If `>= n` are `Met`, the result will be `Met`, otherwise it'll be `NotMet`
-pub fn at_least(
-    should_minimum_meet: usize,
-    conditions: Vec<Condition>,
-) -> Condition {
-    Condition::AtLeast {
-        should_minimum_meet,
-        conditions,
-    }
-}
+        #[cfg(feature = "callback")]
+        {
+            let event = Box::new(PostCallback::new());
+            events.insert(event.get_type().to_string(), event);
+        }
 
-/// Creates a rule for string comparison
-pub fn string_equals(field: &str, val: &str) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringEquals(val.into()),
-    }
-}
+        #[cfg(feature = "email")]
+        {
+            let event = Box::new(EmailNotification::new());
+            events.insert(event.get_type().to_string(), event);
+        }
 
-pub fn string_not_equals(field: &str, val: &str) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringNotEquals(val.into()),
-    }
-}
-
-pub fn string_contains(field: &str, val: &str) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringContains(val.into()),
-    }
-}
-
-pub fn string_contains_all(field: &str, val: Vec<&str>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringContainsAll(
-            val.into_iter().map(ToOwned::to_owned).collect(),
-        ),
-    }
-}
-
-pub fn string_contains_any(field: &str, val: Vec<&str>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringContainsAny(
-            val.into_iter().map(ToOwned::to_owned).collect(),
-        ),
-    }
-}
-
-pub fn string_does_not_contain(field: &str, val: &str) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringDoesNotContain(val.into()),
-    }
-}
-
-pub fn string_does_not_contain_any(field: &str, val: Vec<&str>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringDoesNotContainAny(
-            val.into_iter().map(ToOwned::to_owned).collect(),
-        ),
-    }
-}
-
-pub fn string_in(field: &str, val: Vec<&str>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringIn(
-            val.into_iter().map(ToOwned::to_owned).collect(),
-        ),
-    }
-}
-
-pub fn string_not_in(field: &str, val: Vec<&str>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::StringNotIn(
-            val.into_iter().map(ToOwned::to_owned).collect(),
-        ),
-    }
-}
-
-/// Creates a rule for int comparison.
-pub fn int_equals(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntEquals(val),
-    }
-}
-
-pub fn int_not_equals(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntNotEquals(val),
-    }
-}
-
-pub fn int_contains(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntContains(val),
-    }
-}
-
-pub fn int_contains_all(field: &str, val: Vec<i64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntContainsAll(val),
-    }
-}
-
-pub fn int_contains_any(field: &str, val: Vec<i64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntContainsAny(val),
-    }
-}
-
-pub fn int_does_not_contain(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntDoesNotContain(val),
-    }
-}
-
-pub fn int_does_not_contain_any(field: &str, val: Vec<i64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntDoesNotContainAny(val),
-    }
-}
-
-pub fn int_in(field: &str, val: Vec<i64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntIn(val),
-    }
-}
-
-pub fn int_not_in(field: &str, val: Vec<i64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntNotIn(val),
-    }
-}
-
-pub fn int_in_range(field: &str, start: i64, end: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntInRange(start, end),
-    }
-}
-
-pub fn int_not_in_range(field: &str, start: i64, end: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntNotInRange(start, end),
-    }
-}
-
-pub fn int_less_than(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntLessThan(val),
-    }
-}
-
-pub fn int_less_than_inclusive(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntLessThanInclusive(val),
-    }
-}
-
-pub fn int_greater_than(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntGreaterThan(val),
-    }
-}
-
-pub fn int_greater_than_inclusive(field: &str, val: i64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::IntGreaterThanInclusive(val),
-    }
-}
-
-/// Creates a rule for float comparison.
-pub fn float_equals(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatEquals(val),
-    }
-}
-
-pub fn float_not_equals(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatNotEquals(val),
-    }
-}
-
-pub fn float_contains(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatContains(val),
-    }
-}
-
-pub fn float_does_not_contain(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatDoesNotContain(val),
-    }
-}
-
-pub fn float_in(field: &str, val: Vec<f64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatIn(val),
-    }
-}
-
-pub fn float_not_in(field: &str, val: Vec<f64>) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatNotIn(val),
-    }
-}
-
-pub fn float_in_range(field: &str, start: f64, end: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatInRange(start, end),
-    }
-}
-
-pub fn float_not_in_range(field: &str, start: f64, end: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatNotInRange(start, end),
-    }
-}
-
-pub fn float_less_than(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatLessThan(val),
-    }
-}
-
-pub fn float_less_than_inclusive(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatLessThanInclusive(val),
-    }
-}
-
-pub fn float_greater_than(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatGreaterThan(val),
-    }
-}
-
-pub fn float_greater_than_inclusive(field: &str, val: f64) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::FloatGreaterThanInclusive(val),
-    }
-}
-
-/// Creates a rule for boolean comparison.
-pub fn bool_equals(field: &str, val: bool) -> Condition {
-    Condition::Condition {
-        field: field.into(),
-        constraint: Constraint::BoolEquals(val),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        and, at_least, bool_equals, int_equals, int_in_range, or,
-        string_equals, Status,
-    };
-    use serde_json::{json, Value};
-
-    fn get_test_data() -> Value {
-        json!({
-            "foo": 1,
-            "bar": "bar",
-            "baz": true
-        })
+        Self {
+            rules: Vec::new(),
+            #[cfg(feature = "eval")]
+            rhai_engine: {
+                let mut engine = RhaiEngine::new_raw();
+                engine.register_global_module(
+                    JsonRulesEnginePackage::new().as_shared_module(),
+                );
+                engine
+            },
+            coalescences: HashMap::new(),
+            events,
+        }
     }
 
-    #[test]
-    fn and_rules() {
-        let map = get_test_data();
-        // Met & Met == Met
-        let mut root =
-            and(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
-        let mut res = root.check_value(&map);
-
-        assert!(res.status == Status::Met);
-
-        // Met & NotMet == NotMet
-        root = and(vec![int_equals("foo", 2), string_equals("bar", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::NotMet);
-
-        // Met & Unknown == Unknown
-        root = and(vec![int_equals("quux", 2), string_equals("bar", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Unknown);
-
-        // NotMet & Unknown == NotMet
-        root = and(vec![int_equals("quux", 2), string_equals("bar", "baz")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::NotMet);
-
-        // Unknown & Unknown == Unknown
-        root = and(vec![int_equals("quux", 2), string_equals("fizz", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Unknown);
+    pub fn add_rule(&mut self, rule: Rule) {
+        self.rules.push(rule)
     }
 
-    #[test]
-    fn or_rules() {
-        let map = get_test_data();
-        // Met | Met == Met
-        let mut root =
-            or(vec![int_equals("foo", 1), string_equals("bar", "bar")]);
-        let mut res = root.check_value(&map);
-
-        assert!(res.status == Status::Met);
-
-        // Met | NotMet == Met
-        root = or(vec![int_equals("foo", 2), string_equals("bar", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Met);
-
-        // Met | Unknown == Met
-        root = or(vec![int_equals("quux", 2), string_equals("bar", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Met);
-
-        // NotMet | Unknown == Unknown
-        root = or(vec![int_equals("quux", 2), string_equals("bar", "baz")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Unknown);
-
-        // Unknown | Unknown == Unknown
-        root = or(vec![int_equals("quux", 2), string_equals("fizz", "bar")]);
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::Unknown);
+    pub fn add_rules(&mut self, rules: Vec<Rule>) {
+        self.rules.extend(rules)
     }
 
-    #[test]
-    fn n_of_rules() {
-        let map = get_test_data();
-        // 2 Met, 1 NotMet == Met
-        let mut root = at_least(
-            2,
-            vec![
-                int_equals("foo", 1),
-                string_equals("bar", "bar"),
-                bool_equals("baz", false),
-            ],
-        );
-        let mut res = root.check_value(&map);
-
-        assert!(res.status == Status::Met);
-
-        // 1 Met, 1 NotMet, 1 Unknown == NotMet
-        root = at_least(
-            2,
-            vec![
-                int_equals("foo", 1),
-                string_equals("quux", "bar"),
-                bool_equals("baz", false),
-            ],
-        );
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::NotMet);
-
-        // 2 NotMet, 1 Unknown == Unknown
-        root = at_least(
-            2,
-            vec![
-                int_equals("foo", 2),
-                string_equals("quux", "baz"),
-                bool_equals("baz", false),
-            ],
-        );
-        res = root.check_value(&map);
-
-        assert!(res.status == Status::NotMet);
+    pub fn load_rules(&mut self, rules: Vec<Rule>) {
+        self.rules = rules;
     }
 
-    #[test]
-    fn string_equals_rule() {
-        let map = get_test_data();
-        let mut rule = string_equals("bar", "bar");
-        let mut res = rule.check_value(&map);
-        assert!(res.status == Status::Met);
-
-        rule = string_equals("bar", "baz");
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+    pub fn clear(&mut self) {
+        self.rules.clear();
     }
 
-    #[test]
-    fn int_equals_rule() {
-        let map = get_test_data();
-        let mut rule = int_equals("foo", 1);
-        let mut res = rule.check_value(&map);
-        assert!(res.status == Status::Met);
-
-        rule = int_equals("foo", 2);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
-
-        // Values not convertible to int should be NotMet
-        rule = int_equals("bar", 2);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+    #[cfg(feature = "eval")]
+    pub fn add_function(&mut self, fname: &str, f: fn(Map) -> bool) {
+        self.rhai_engine.register_fn(fname, f);
     }
 
-    #[test]
-    fn int_range_rule() {
-        let map = get_test_data();
-        let mut rule = int_in_range("foo", 1, 3);
-        let mut res = rule.check_value(&map);
-        assert!(res.status == Status::Met);
-
-        rule = int_in_range("foo", 2, 3);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
-
-        // Values not convertible to int should be NotMet
-        rule = int_in_range("bar", 1, 3);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+    pub fn add_event(&mut self, f: Box<dyn EventTrait>) {
+        self.events.insert(f.get_type().to_string(), f);
     }
 
-    #[test]
-    fn boolean_rule() {
-        let mut map = get_test_data();
-        let mut rule = bool_equals("baz", true);
-        let mut res = rule.check_value(&map);
-        assert!(res.status == Status::Met);
+    pub async fn run<T: Serialize>(
+        &mut self,
+        facts: &T,
+    ) -> Result<Vec<RuleResult>> {
+        let facts = to_value(facts)?;
+        let mut met_rule_results: Vec<RuleResult> = self
+            .rules
+            .iter()
+            .map(|rule| {
+                rule.check_value(
+                    &facts,
+                    #[cfg(feature = "eval")]
+                    &self.rhai_engine,
+                )
+            })
+            .filter(|rule_result| {
+                rule_result.condition_result.status == Status::Met
+            })
+            .collect();
 
-        rule = bool_equals("baz", false);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+        self.coalescences.retain(|_k, (start, expiration)| {
+            start.elapsed().as_secs() < *expiration
+        });
 
-        rule = bool_equals("bar", true);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+        let mut event_pool = Vec::new();
+        for rule_result in met_rule_results.iter_mut() {
+            // filter the events
+            let mut cole = self.coalescences.clone();
+            rule_result.events.retain(|event| {
+                if let (Some(coalescence_group), Some(coalescence)) =
+                    (&event.coalescence_group, event.coalescence)
+                {
+                    if cole.contains_key(coalescence_group) {
+                        return false;
+                    } else {
+                        cole.insert(
+                            coalescence_group.clone(),
+                            (Instant::now(), coalescence),
+                        );
+                    }
+                }
 
-        rule = bool_equals("bar", false);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+                true
+            });
 
-        map["quux".to_owned()] = json!("tRuE");
-        rule = bool_equals("quux", true);
-        res = rule.check_value(&map);
-        assert!(res.status == Status::NotMet);
+            self.coalescences = cole;
+
+            // run the events
+            for event in &rule_result.events {
+                let e = self.events.get(&event.event.ty).ok_or_else(|| {
+                    Error::EventError("Event type doesn't exist".to_string())
+                })?;
+
+                e.validate(&event.event.params).map_err(Error::EventError)?;
+                event_pool.push(e.trigger(&event.event.params, &facts));
+            }
+        }
+
+        for e in event_pool {
+            e.await?;
+        }
+
+        Ok(met_rule_results)
     }
 }
