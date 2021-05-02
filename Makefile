@@ -14,4 +14,4 @@ check:
 
 test:
 	@echo -e '\e[1;31mTest in all different combination of features...\e[0m'
-	@cargo test-all-features
+	@cargo test-all-features -- --report-time -Z unstable-options

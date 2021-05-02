@@ -46,6 +46,21 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    fn value_as_str_array(v: &Value) -> Option<Vec<&str>> {
+        v.as_array()
+            .map(|x| x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>())
+    }
+
+    fn value_as_i64_array(v: &Value) -> Option<Vec<i64>> {
+        v.as_array()
+            .map(|x| x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>())
+    }
+
+    fn value_as_f64_array(v: &Value) -> Option<Vec<f64>> {
+        v.as_array()
+            .map(|x| x.iter().filter_map(|y| y.as_f64()).collect::<Vec<_>>())
+    }
+
     pub fn check_value(&self, v: &Value) -> Status {
         match *self {
             Constraint::StringEquals(ref s) => {
@@ -71,9 +86,7 @@ impl Constraint {
                 }
             }
             Constraint::StringContains(ref s) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_str_array(v) {
                     if v.contains(&s.as_str()) {
                         Status::Met
                     } else {
@@ -84,9 +97,7 @@ impl Constraint {
                 }
             }
             Constraint::StringContainsAll(ref s) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_str_array(v) {
                     if s.iter().all(|y| v.contains(&y.as_str())) {
                         Status::Met
                     } else {
@@ -97,9 +108,7 @@ impl Constraint {
                 }
             }
             Constraint::StringContainsAny(ref s) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_str_array(v) {
                     if s.iter().any(|y| v.contains(&y.as_str())) {
                         Status::Met
                     } else {
@@ -110,9 +119,7 @@ impl Constraint {
                 }
             }
             Constraint::StringDoesNotContain(ref s) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_str_array(v) {
                     if !v.contains(&s.as_str()) {
                         Status::Met
                     } else {
@@ -123,9 +130,7 @@ impl Constraint {
                 }
             }
             Constraint::StringDoesNotContainAny(ref s) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_str()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_str_array(v) {
                     if s.iter().all(|y| !v.contains(&y.as_str())) {
                         Status::Met
                     } else {
@@ -180,9 +185,7 @@ impl Constraint {
                 }
             }
             Constraint::IntContains(num) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_i64_array(v) {
                     if v.contains(&num) {
                         Status::Met
                     } else {
@@ -193,9 +196,7 @@ impl Constraint {
                 }
             }
             Constraint::IntContainsAll(ref nums) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_i64_array(v) {
                     if nums.iter().all(|num| v.contains(&num)) {
                         Status::Met
                     } else {
@@ -206,9 +207,7 @@ impl Constraint {
                 }
             }
             Constraint::IntContainsAny(ref nums) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_i64_array(v) {
                     if nums.iter().any(|num| v.contains(&num)) {
                         Status::Met
                     } else {
@@ -219,9 +218,7 @@ impl Constraint {
                 }
             }
             Constraint::IntDoesNotContain(num) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_i64_array(v) {
                     if !v.contains(&num) {
                         Status::Met
                     } else {
@@ -232,9 +229,7 @@ impl Constraint {
                 }
             }
             Constraint::IntDoesNotContainAny(ref nums) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_i64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_i64_array(v) {
                     if nums.iter().all(|num| !v.contains(&num)) {
                         Status::Met
                     } else {
@@ -355,9 +350,7 @@ impl Constraint {
                 }
             }
             Constraint::FloatContains(num) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_f64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_f64_array(v) {
                     if v.contains(&num) {
                         Status::Met
                     } else {
@@ -368,9 +361,7 @@ impl Constraint {
                 }
             }
             Constraint::FloatDoesNotContain(num) => {
-                if let Some(v) = v.as_array().map(|x| {
-                    x.iter().filter_map(|y| y.as_f64()).collect::<Vec<_>>()
-                }) {
+                if let Some(v) = Self::value_as_f64_array(v) {
                     if !v.contains(&num) {
                         Status::Met
                     } else {
