@@ -143,10 +143,9 @@ impl Condition {
                     format!("/{}", field)
                 };
 
-                let status = if let Some(s) = info.pointer(&path) {
-                    constraint.check_value(s)
-                } else {
-                    Status::Unknown
+                let status = match info.pointer(&path) {
+                    None => Status::Unknown,
+                    Some(s) => constraint.check_value(s),
                 };
 
                 ConditionResult {

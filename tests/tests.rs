@@ -7,7 +7,7 @@ use serde_json::json;
 use std::collections::HashMap;
 
 #[tokio::test]
-async fn basic() {
+async fn basic_met() {
     #[derive(Deserialize, Serialize)]
     struct Facts {
         name: String,
@@ -56,6 +56,48 @@ async fn basic() {
     let rule_results = engine.run(&facts).await.unwrap();
 
     assert_eq!(rule_results[0].condition_result.status, Status::Met)
+}
+
+#[tokio::test]
+async fn basic_not_met() {
+    #[derive(Deserialize, Serialize)]
+    struct Facts {
+        name: String,
+        age: u8,
+        action: String,
+    }
+
+    let rule_json = json!({
+        "conditions": {
+            "and": [
+                {
+                    "field": "age",
+                    "operator": "int_in_range",
+                    "value": [20, 25]
+                },
+            ]
+        },
+        "events": [
+        ]
+    });
+
+    let rule: Rule = serde_json::from_str::<Rule>(
+        &serde_json::to_string(&rule_json).unwrap(),
+    )
+    .unwrap();
+
+    let mut engine = Engine::new();
+    engine.add_rule(rule);
+
+    let facts = json!({
+        "name": "Cheng JIANG",
+        "age": 18,
+        "action": "coding in rust",
+    });
+
+    let rule_results = engine.run(&facts).await.unwrap();
+
+    assert_eq!(rule_results.len(), 0);
 }
 
 #[cfg(feature = "eval")]
