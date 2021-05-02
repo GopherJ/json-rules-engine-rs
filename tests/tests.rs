@@ -337,3 +337,51 @@ async fn custom_event() {
 
     engine.run(&facts).await.unwrap();
 }
+
+#[tokio::test]
+async fn test_a_pointer() {
+    #[derive(Deserialize, Serialize)]
+    struct Facts {
+        name: String,
+        age: u8,
+        action: String,
+    }
+
+    let rule_json = json!({
+        "conditions": {
+            "and": [
+                {
+                    "field": "person/name",
+                    "operator": "string_equals",
+                    "value": "Cheng JIANG"
+                },
+                {
+                    "field": "person/age",
+                    "operator": "int_in_range",
+                    "value": [20, 25]
+                },
+            ]
+        },
+        "events": [
+        ]
+    });
+
+    let rule: Rule = serde_json::from_str::<Rule>(
+        &serde_json::to_string(&rule_json).unwrap(),
+    )
+        .unwrap();
+
+    let mut engine = Engine::new();
+    engine.add_rule(rule);
+
+    let facts = json!({
+        "person": {
+            "name": "Cheng JIANG",
+            "age": 24,
+        }
+    });
+
+    let rule_results = engine.run(&facts).await.unwrap();
+
+    assert_eq!(rule_results[0].condition_result.status, Status::Met)
+}
