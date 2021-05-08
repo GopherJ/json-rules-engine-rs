@@ -1,8 +1,8 @@
 install-requirements:
-	@rustup component add clippy-preview
-	@cargo install cargo-outdated
-	@cargo install cargo-all-features
-	@cargo install cargo-udeps
+	@rustup component add clippy-preview || true
+	@cargo install cargo-outdated || true
+	@cargo install cargo-all-features || true
+	@cargo install cargo-udeps || true
 
 check:
 	@cargo check-all-features

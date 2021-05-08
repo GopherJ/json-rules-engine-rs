@@ -1,11 +1,8 @@
-use crate::Constraint;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
+use crate::{status::Status, Constraint};
 #[cfg(feature = "eval")]
 use rhai::{serde::to_dynamic, Engine, Scope};
-
-use crate::status::Status;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -27,6 +24,7 @@ pub enum Condition {
         field: String,
         #[serde(flatten)]
         constraint: Constraint,
+        path: Option<String>,
     },
     #[cfg(feature = "eval")]
     Eval {
@@ -133,20 +131,36 @@ impl Condition {
                     children,
                 }
             }
+            #[allow(unused_variables)]
             Condition::Condition {
                 ref field,
                 ref constraint,
+                ref path,
             } => {
-                let path = if field.starts_with('/') {
+                let node_path = if field.starts_with('/') {
                     field.to_owned()
                 } else {
                     format!("/{}", field)
                 };
 
-                let status = match info.pointer(&path) {
-                    None => Status::Unknown,
-                    Some(s) => constraint.check_value(s),
-                };
+                let mut status = Status::Unknown;
+
+                #[allow(unused_mut)]
+                if let Some(mut node) = info.pointer(&node_path).cloned() {
+                    #[cfg(feature = "path")]
+                    {
+                        if let Some(p) = path {
+                            let x = jsonpath_lib::select(&node, p)
+                                .unwrap()
+                                .into_iter()
+                                .cloned()
+                                .collect();
+                            node = Value::Array(x);
+                        }
+                    }
+
+                    status = constraint.check_value(&node);
+                }
 
                 ConditionResult {
                     name: field.to_owned(),
@@ -226,6 +240,7 @@ pub fn string_equals(field: &str, val: &str) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::StringEquals(val.into()),
+        path: None,
     }
 }
 
@@ -233,6 +248,7 @@ pub fn string_not_equals(field: &str, val: &str) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::StringNotEquals(val.into()),
+        path: None,
     }
 }
 
@@ -240,6 +256,7 @@ pub fn string_contains(field: &str, val: &str) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::StringContains(val.into()),
+        path: None,
     }
 }
 
@@ -249,6 +266,7 @@ pub fn string_contains_all(field: &str, val: Vec<&str>) -> Condition {
         constraint: Constraint::StringContainsAll(
             val.into_iter().map(ToOwned::to_owned).collect(),
         ),
+        path: None,
     }
 }
 
@@ -258,6 +276,7 @@ pub fn string_contains_any(field: &str, val: Vec<&str>) -> Condition {
         constraint: Constraint::StringContainsAny(
             val.into_iter().map(ToOwned::to_owned).collect(),
         ),
+        path: None,
     }
 }
 
@@ -265,6 +284,7 @@ pub fn string_does_not_contain(field: &str, val: &str) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::StringDoesNotContain(val.into()),
+        path: None,
     }
 }
 
@@ -274,6 +294,7 @@ pub fn string_does_not_contain_any(field: &str, val: Vec<&str>) -> Condition {
         constraint: Constraint::StringDoesNotContainAny(
             val.into_iter().map(ToOwned::to_owned).collect(),
         ),
+        path: None,
     }
 }
 
@@ -283,6 +304,7 @@ pub fn string_in(field: &str, val: Vec<&str>) -> Condition {
         constraint: Constraint::StringIn(
             val.into_iter().map(ToOwned::to_owned).collect(),
         ),
+        path: None,
     }
 }
 
@@ -292,6 +314,7 @@ pub fn string_not_in(field: &str, val: Vec<&str>) -> Condition {
         constraint: Constraint::StringNotIn(
             val.into_iter().map(ToOwned::to_owned).collect(),
         ),
+        path: None,
     }
 }
 
@@ -300,6 +323,7 @@ pub fn int_equals(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntEquals(val),
+        path: None,
     }
 }
 
@@ -307,6 +331,7 @@ pub fn int_not_equals(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntNotEquals(val),
+        path: None,
     }
 }
 
@@ -314,6 +339,7 @@ pub fn int_contains(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntContains(val),
+        path: None,
     }
 }
 
@@ -321,6 +347,7 @@ pub fn int_contains_all(field: &str, val: Vec<i64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntContainsAll(val),
+        path: None,
     }
 }
 
@@ -328,6 +355,7 @@ pub fn int_contains_any(field: &str, val: Vec<i64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntContainsAny(val),
+        path: None,
     }
 }
 
@@ -335,6 +363,7 @@ pub fn int_does_not_contain(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntDoesNotContain(val),
+        path: None,
     }
 }
 
@@ -342,6 +371,7 @@ pub fn int_does_not_contain_any(field: &str, val: Vec<i64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntDoesNotContainAny(val),
+        path: None,
     }
 }
 
@@ -349,6 +379,7 @@ pub fn int_in(field: &str, val: Vec<i64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntIn(val),
+        path: None,
     }
 }
 
@@ -356,6 +387,7 @@ pub fn int_not_in(field: &str, val: Vec<i64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntNotIn(val),
+        path: None,
     }
 }
 
@@ -363,6 +395,7 @@ pub fn int_in_range(field: &str, start: i64, end: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntInRange(start, end),
+        path: None,
     }
 }
 
@@ -370,6 +403,7 @@ pub fn int_not_in_range(field: &str, start: i64, end: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntNotInRange(start, end),
+        path: None,
     }
 }
 
@@ -377,6 +411,7 @@ pub fn int_less_than(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntLessThan(val),
+        path: None,
     }
 }
 
@@ -384,6 +419,7 @@ pub fn int_less_than_inclusive(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntLessThanInclusive(val),
+        path: None,
     }
 }
 
@@ -391,6 +427,7 @@ pub fn int_greater_than(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntGreaterThan(val),
+        path: None,
     }
 }
 
@@ -398,6 +435,7 @@ pub fn int_greater_than_inclusive(field: &str, val: i64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::IntGreaterThanInclusive(val),
+        path: None,
     }
 }
 
@@ -406,6 +444,7 @@ pub fn float_equals(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatEquals(val),
+        path: None,
     }
 }
 
@@ -413,6 +452,7 @@ pub fn float_not_equals(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatNotEquals(val),
+        path: None,
     }
 }
 
@@ -420,6 +460,7 @@ pub fn float_contains(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatContains(val),
+        path: None,
     }
 }
 
@@ -427,6 +468,7 @@ pub fn float_does_not_contain(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatDoesNotContain(val),
+        path: None,
     }
 }
 
@@ -434,6 +476,7 @@ pub fn float_in(field: &str, val: Vec<f64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatIn(val),
+        path: None,
     }
 }
 
@@ -441,6 +484,7 @@ pub fn float_not_in(field: &str, val: Vec<f64>) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatNotIn(val),
+        path: None,
     }
 }
 
@@ -448,6 +492,7 @@ pub fn float_in_range(field: &str, start: f64, end: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatInRange(start, end),
+        path: None,
     }
 }
 
@@ -455,6 +500,7 @@ pub fn float_not_in_range(field: &str, start: f64, end: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatNotInRange(start, end),
+        path: None,
     }
 }
 
@@ -462,6 +508,7 @@ pub fn float_less_than(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatLessThan(val),
+        path: None,
     }
 }
 
@@ -469,6 +516,7 @@ pub fn float_less_than_inclusive(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatLessThanInclusive(val),
+        path: None,
     }
 }
 
@@ -476,6 +524,7 @@ pub fn float_greater_than(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatGreaterThan(val),
+        path: None,
     }
 }
 
@@ -483,6 +532,7 @@ pub fn float_greater_than_inclusive(field: &str, val: f64) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::FloatGreaterThanInclusive(val),
+        path: None,
     }
 }
 
@@ -491,6 +541,7 @@ pub fn bool_equals(field: &str, val: bool) -> Condition {
     Condition::Condition {
         field: field.into(),
         constraint: Constraint::BoolEquals(val),
+        path: None,
     }
 }
 

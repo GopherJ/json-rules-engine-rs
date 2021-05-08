@@ -1,5 +1,6 @@
 use crate::error::Error;
 use async_trait::async_trait;
+use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -38,6 +39,6 @@ pub trait EventTrait {
     async fn trigger(
         &self,
         params: &HashMap<String, serde_json::Value>,
-        facts: &serde_json::Value,
+        facts: &(dyn ErasedSerialize + Sync),
     ) -> Result<(), Error>;
 }

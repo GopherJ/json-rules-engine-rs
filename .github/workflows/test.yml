@@ -11,4 +11,15 @@ jobs:
     - uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
+    - uses: actions/cache@v2
+      id: cache
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin
+          target/
+        key: cargo
+        restore-keys: |
+          cargo
     - run: make install-requirements test

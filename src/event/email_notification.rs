@@ -1,9 +1,10 @@
-use sendgrid::v3::{Content, Message, Personalization, Sender};
-
 use crate::{event::EventTrait, Error};
 use async_trait::async_trait;
+use erased_serde::Serialize;
 use futures_util::TryFutureExt;
-use sendgrid::v3::Email as SendGridEmail;
+use sendgrid::v3::{
+    Content, Email as SendGridEmail, Message, Personalization, Sender,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -42,7 +43,7 @@ impl EventTrait for EmailNotification {
     async fn trigger(
         &self,
         params: &HashMap<String, serde_json::Value>,
-        facts: &serde_json::Value,
+        facts: &(dyn Serialize + Sync),
     ) -> Result<(), Error> {
         let api_key = ::std::env::var("SENDGRID_API_KEY")
             .expect("You must set 'SENDGRID_API_KEY' environment variable");
@@ -54,14 +55,18 @@ impl EventTrait for EmailNotification {
         let mut title = params.get("title").unwrap().to_string();
         let mut message = params.get("message").unwrap().to_string();
 
+        let value = serde_json::from_str::<Value>(
+            &serde_json::to_string(facts).unwrap(),
+        )
+        .unwrap();
         if let Ok(tmpl) = mustache::compile_str(&message)
-            .and_then(|template| template.render_to_string(facts))
+            .and_then(|template| template.render_to_string(&value))
         {
             message = tmpl;
         }
 
         if let Ok(tmpl) = mustache::compile_str(&title)
-            .and_then(|template| template.render_to_string(facts))
+            .and_then(|template| template.render_to_string(&value))
         {
             title = tmpl;
         }

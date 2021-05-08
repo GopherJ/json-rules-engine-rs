@@ -1,7 +1,8 @@
 use crate::{event::EventTrait, Error};
 use async_trait::async_trait;
+use erased_serde::Serialize;
 use reqwest::Client;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -37,7 +38,7 @@ impl EventTrait for PostCallback {
     async fn trigger(
         &self,
         params: &HashMap<String, serde_json::Value>,
-        facts: &serde_json::Value,
+        facts: &(dyn Serialize + Sync),
     ) -> Result<(), Error> {
         let mut callback_url = params
             .get("callback_url")
@@ -46,8 +47,12 @@ impl EventTrait for PostCallback {
             .unwrap()
             .to_string();
 
+        let value = serde_json::from_str::<Value>(
+            &serde_json::to_string(facts).unwrap(),
+        )
+        .unwrap();
         if let Ok(tmpl) = mustache::compile_str(&callback_url)
-            .and_then(|template| template.render_to_string(facts))
+            .and_then(|template| template.render_to_string(&value))
         {
             callback_url = tmpl;
         }

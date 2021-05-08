@@ -7,7 +7,7 @@ use rhai::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Rule {
     pub conditions: Condition,
     pub events: Vec<CoalescenceEvent>,

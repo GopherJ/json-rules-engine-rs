@@ -1,9 +1,10 @@
 use async_trait::async_trait;
+use erased_serde::Serialize as ErasedSerialize;
 #[cfg(feature = "eval")]
 use json_rules_engine::{from_dynamic, Map};
 use json_rules_engine::{Engine, Error, EventTrait, Rule, Status};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 #[tokio::test]
@@ -273,13 +274,17 @@ async fn custom_event() {
         async fn trigger(
             &self,
             params: &HashMap<String, serde_json::Value>,
-            facts: &serde_json::Value,
+            facts: &(dyn ErasedSerialize + Sync),
         ) -> Result<(), Error> {
             let mut name =
                 params.get("name").unwrap().as_str().unwrap().to_string();
 
+            let value = serde_json::from_str::<Value>(
+                &serde_json::to_string(facts).unwrap(),
+            )
+            .unwrap();
             if let Ok(tmpl) = mustache::compile_str(&name)
-                .and_then(|template| template.render_to_string(facts))
+                .and_then(|template| template.render_to_string(&value))
             {
                 name = tmpl;
             }
@@ -369,7 +374,7 @@ async fn test_a_pointer() {
     let rule: Rule = serde_json::from_str::<Rule>(
         &serde_json::to_string(&rule_json).unwrap(),
     )
-        .unwrap();
+    .unwrap();
 
     let mut engine = Engine::new();
     engine.add_rule(rule);
@@ -379,6 +384,57 @@ async fn test_a_pointer() {
             "name": "Cheng JIANG",
             "age": 24,
         }
+    });
+
+    let rule_results = engine.run(&facts).await.unwrap();
+
+    assert_eq!(rule_results[0].condition_result.status, Status::Met)
+}
+
+#[cfg(feature = "path")]
+#[tokio::test]
+async fn test_a_pointer_and_path() {
+    #[derive(Deserialize, Serialize)]
+    struct Facts {
+        name: String,
+        age: u8,
+        action: String,
+    }
+
+    let rule_json = json!({
+        "conditions": {
+            "and": [
+                {
+                    "field": "people",
+                    "operator": "string_contains",
+                    "value": "Cheng JIANG",
+                    "path": "$..name"
+                }
+            ]
+        },
+        "events": [
+        ]
+    });
+
+    let rule: Rule = serde_json::from_str::<Rule>(
+        &serde_json::to_string(&rule_json).unwrap(),
+    )
+    .unwrap();
+
+    let mut engine = Engine::new();
+    engine.add_rule(rule);
+
+    let facts = json!({
+        "people": [
+            {
+                "name": "Cheng JIANG",
+                "age": 24,
+            },
+            {
+                "name": "Omid Rad",
+                "age": 23,
+            },
+        ]
     });
 
     let rule_results = engine.run(&facts).await.unwrap();
