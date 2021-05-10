@@ -37,7 +37,7 @@ pub trait EventTrait {
         params: &HashMap<String, serde_json::Value>,
     ) -> Result<(), String>;
     async fn trigger(
-        &self,
+        &mut self,
         params: &HashMap<String, serde_json::Value>,
         facts: &(dyn ErasedSerialize + Sync),
     ) -> Result<(), Error>;

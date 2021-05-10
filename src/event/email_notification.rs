@@ -41,7 +41,7 @@ impl EventTrait for EmailNotification {
     }
 
     async fn trigger(
-        &self,
+        &mut self,
         params: &HashMap<String, serde_json::Value>,
         facts: &(dyn Serialize + Sync),
     ) -> Result<(), Error> {

@@ -91,6 +91,7 @@ use crate::event::post_callback::PostCallback;
 
 pub use crate::error::*;
 use serde::Serialize;
+use std::{rc::Rc, sync::RwLock};
 
 #[cfg(feature = "eval")]
 def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
@@ -103,7 +104,7 @@ def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
 #[derive(Default)]
 pub struct Engine {
     rules: Vec<Rule>,
-    events: HashMap<String, Box<dyn EventTrait>>,
+    events: HashMap<String, Rc<RwLock<dyn EventTrait>>>,
     #[cfg(feature = "eval")]
     rhai_engine: RhaiEngine,
     coalescences: HashMap<String, (Instant, u64)>,
@@ -112,18 +113,20 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         #[allow(unused_mut)]
-        let mut events: HashMap<_, Box<dyn EventTrait>> = HashMap::new();
+        let mut events: HashMap<_, Rc<RwLock<dyn EventTrait>>> = HashMap::new();
 
         #[cfg(feature = "callback")]
         {
-            let event = Box::new(PostCallback::new());
-            events.insert(event.get_type().to_string(), event);
+            let event = Rc::new(RwLock::new(PostCallback::new()));
+            let key = event.read().unwrap().get_type().to_string();
+            events.insert(key, event);
         }
 
         #[cfg(feature = "email")]
         {
-            let event = Box::new(EmailNotification::new());
-            events.insert(event.get_type().to_string(), event);
+            let event = Rc::new(RwLock::new(EmailNotification::new()));
+            let key = event.read().unwrap().get_type().to_string();
+            events.insert(key, event);
         }
 
         Self {
@@ -162,8 +165,9 @@ impl Engine {
         self.rhai_engine.register_fn(fname, f);
     }
 
-    pub fn add_event(&mut self, f: Box<dyn EventTrait>) {
-        self.events.insert(f.get_type().to_string(), f);
+    pub fn add_event(&mut self, f: Rc<RwLock<dyn EventTrait>>) {
+        let key = f.read().unwrap().get_type().to_string();
+        self.events.insert(key, f);
     }
 
     pub async fn run<T: Serialize>(
@@ -190,7 +194,6 @@ impl Engine {
             start.elapsed().as_secs() < *expiration
         });
 
-        let mut event_pool = Vec::new();
         for rule_result in met_rule_results.iter_mut() {
             // filter the events
             let mut cole = self.coalescences.clone();
@@ -213,19 +216,25 @@ impl Engine {
 
             self.coalescences = cole;
 
+            // TODO run all the async events in parallel
             // run the events
             for event in &rule_result.events {
-                let e = self.events.get(&event.event.ty).ok_or_else(|| {
-                    Error::EventError("Event type doesn't exist".to_string())
-                })?;
+                let e =
+                    self.events.get_mut(&event.event.ty).ok_or_else(|| {
+                        Error::EventError(
+                            "Event type doesn't exist".to_string(),
+                        )
+                    })?;
 
-                e.validate(&event.event.params).map_err(Error::EventError)?;
-                event_pool.push(e.trigger(&event.event.params, &facts));
+                e.read()
+                    .unwrap()
+                    .validate(&event.event.params)
+                    .map_err(Error::EventError)?;
+                e.write()
+                    .unwrap()
+                    .trigger(&event.event.params, &facts)
+                    .await?;
             }
-        }
-
-        for e in event_pool {
-            e.await?;
         }
 
         Ok(met_rule_results)

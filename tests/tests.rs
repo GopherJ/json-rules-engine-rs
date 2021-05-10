@@ -5,7 +5,7 @@ use json_rules_engine::{from_dynamic, Map};
 use json_rules_engine::{Engine, Error, EventTrait, Rule, Status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc, sync::RwLock};
 
 #[tokio::test]
 async fn basic_met() {
@@ -234,7 +234,6 @@ async fn post_callback_event() {
 }
 
 #[tokio::test]
-#[should_panic(expected = "name is: Cheng JIANG")]
 async fn custom_event() {
     #[derive(Deserialize, Serialize)]
     struct Facts {
@@ -246,6 +245,7 @@ async fn custom_event() {
     #[derive(Debug, Clone)]
     struct CustomEvent {
         ty: String,
+        res: String,
     }
 
     #[async_trait]
@@ -253,6 +253,7 @@ async fn custom_event() {
         fn new() -> Self {
             Self {
                 ty: "custom_event".to_string(),
+                res: String::new(),
             }
         }
 
@@ -272,7 +273,7 @@ async fn custom_event() {
         }
 
         async fn trigger(
-            &self,
+            &mut self,
             params: &HashMap<String, serde_json::Value>,
             facts: &(dyn ErasedSerialize + Sync),
         ) -> Result<(), Error> {
@@ -289,7 +290,9 @@ async fn custom_event() {
                 name = tmpl;
             }
 
-            panic!("name is: {}", &name);
+            self.res = format!("name is: {}", &name);
+
+            Ok(())
         }
     }
 
@@ -331,8 +334,8 @@ async fn custom_event() {
     let mut engine = Engine::new();
     engine.add_rule(rule);
 
-    let custom_event = CustomEvent::new();
-    engine.add_event(Box::new(custom_event));
+    let custom_event = Rc::new(RwLock::new(CustomEvent::new()));
+    engine.add_event(custom_event.clone());
 
     let facts = json!({
         "name": "Cheng JIANG",
@@ -341,6 +344,8 @@ async fn custom_event() {
     });
 
     engine.run(&facts).await.unwrap();
+
+    assert_eq!(&custom_event.read().unwrap().res, "name is: Cheng JIANG");
 }
 
 #[tokio::test]
