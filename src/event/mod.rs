@@ -1,7 +1,10 @@
 use crate::error::Error;
+
 use async_trait::async_trait;
 use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
 use std::collections::HashMap;
 
 #[cfg(feature = "email")]
@@ -21,7 +24,7 @@ pub struct CoalescenceEvent {
 pub struct Event {
     #[serde(rename = "type")]
     pub ty: String,
-    pub params: HashMap<String, serde_json::Value>,
+    pub params: HashMap<String, Value>,
 }
 
 #[async_trait]
@@ -32,13 +35,11 @@ pub trait EventTrait {
 
     fn get_type(&self) -> &str;
 
-    fn validate(
-        &self,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<(), String>;
+    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String>;
+
     async fn trigger(
         &mut self,
-        params: &HashMap<String, serde_json::Value>,
+        params: &HashMap<String, Value>,
         facts: &(dyn ErasedSerialize + Sync),
     ) -> Result<(), Error>;
 }

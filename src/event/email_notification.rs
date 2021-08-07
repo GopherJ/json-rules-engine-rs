@@ -1,4 +1,5 @@
 use crate::{event::EventTrait, Error};
+
 use async_trait::async_trait;
 use erased_serde::Serialize;
 use futures_util::TryFutureExt;
@@ -6,6 +7,7 @@ use sendgrid::v3::{
     Content, Email as SendGridEmail, Message, Personalization, Sender,
 };
 use serde_json::Value;
+
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -42,7 +44,7 @@ impl EventTrait for EmailNotification {
 
     async fn trigger(
         &mut self,
-        params: &HashMap<String, serde_json::Value>,
+        params: &HashMap<String, Value>,
         facts: &(dyn Serialize + Sync),
     ) -> Result<(), Error> {
         let api_key = ::std::env::var("SENDGRID_API_KEY")

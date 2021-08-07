@@ -1,8 +1,10 @@
 use crate::{event::EventTrait, Error};
+
 use async_trait::async_trait;
 use erased_serde::Serialize;
 use reqwest::Client;
 use serde_json::{json, Value};
+
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -24,10 +26,7 @@ impl EventTrait for PostCallback {
         &self.ty
     }
 
-    fn validate(
-        &self,
-        params: &HashMap<String, serde_json::Value>,
-    ) -> Result<(), String> {
+    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String> {
         if !params.contains_key("callback_url") {
             return Err("'callback_url' is missing.".to_string());
         }
@@ -37,7 +36,7 @@ impl EventTrait for PostCallback {
 
     async fn trigger(
         &mut self,
-        params: &HashMap<String, serde_json::Value>,
+        params: &HashMap<String, Value>,
         facts: &(dyn Serialize + Sync),
     ) -> Result<(), Error> {
         let mut callback_url = params
