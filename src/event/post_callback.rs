@@ -26,7 +26,10 @@ impl EventTrait for PostCallback {
         &self.ty
     }
 
-    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String> {
+    async fn validate(
+        &self,
+        params: &HashMap<String, Value>,
+    ) -> Result<(), String> {
         if !params.contains_key("callback_url") {
             return Err("'callback_url' is missing.".to_string());
         }

@@ -3,22 +3,23 @@ authors     = [
   "Cheng JIANG <alex_cj96@foxmail.com>",
   "Benn Sundsrud <benn.sundsrud@gmail.com>",
 ]
-description = "json rules engine"
-edition     = "2018"
-keywords    = ["json", "rule", "rules", "engine"]
-license     = "MIT/Apache-2.0"
-name        = "json-rules-engine"
-repository  = "https://github.com/GopherJ/json-rules-engine-rs"
-version     = "0.9.4"
+description  = "json rules engine"
+edition      = "2021"
+keywords     = ["json", "rule", "rules", "engine"]
+license      = "MIT/Apache-2.0"
+name         = "json-rules-engine"
+repository   = "https://github.com/GopherJ/json-rules-engine-rs"
+version      = "0.9.4"
+rust-version = "1.61.0"
 
 [dependencies]
-async-trait  = "0.1"
+async-trait  = { version = "0.1", optional = true }
 erased-serde = "0.3"
 futures-util = { version = "0.3", optional = true }
-jsonpath_lib = { version = "0.2", optional = true }
+jsonpath_lib = { version = "0.3", optional = true }
 mustache     = "0.9"
 reqwest      = { version = "0.11", features = ["json", "rustls-tls"], optional = true }
-rhai         = { version = "0.20", features = [
+rhai         = { version = "1.10", features = [
   "sync",
   "f32_float",
   "no_function",
@@ -28,11 +29,11 @@ rhai         = { version = "0.20", features = [
   "serde",
   "unchecked",
 ], optional = true }
-sendgrid     = { version = "0.17", default-features = false, features = ["async", "rustls"], optional = true }
+sendgrid     = { version = "0.18", default-features = false, features = ["async", "rustls"], optional = true }
 serde        = { version = "1.0", features = ["derive"] }
 serde_json   = { version = "1.0" }
-strum        = "0.20"
-strum_macros = "0.20"
+strum        = "0.24"
+strum_macros = "0.24"
 thiserror    = "1.0"
 
 [dev-dependencies]
@@ -40,9 +41,10 @@ tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
+async = ["async-trait", "futures-util"]
 
-callback = ["reqwest"]
-email    = ["sendgrid", "futures-util"]
+callback = ["reqwest", "async"]
+email    = ["sendgrid", "async"]
 
 eval = ["rhai"]
 path = ["jsonpath_lib"]

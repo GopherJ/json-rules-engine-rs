@@ -91,43 +91,72 @@ use crate::event::post_callback::PostCallback;
 
 pub use crate::error::*;
 use serde::Serialize;
-use std::{rc::Rc, sync::RwLock};
+
+#[cfg(feature = "async")]
+type EventType =
+    std::sync::Arc<futures_util::lock::Mutex<dyn EventTrait + Send + Sync>>;
+#[cfg(not(feature = "async"))]
+type EventType = std::rc::Rc<std::sync::Mutex<dyn EventTrait>>;
 
 #[cfg(feature = "eval")]
-def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
-    ArithmeticPackage::init(lib);
-    LogicPackage::init(lib);
-    BasicArrayPackage::init(lib);
-    BasicMapPackage::init(lib);
-});
+def_package!(
+    /// Package for json-rules-engine
+    pub JsonRulesEnginePackage(module) : ArithmeticPackage, LogicPackage, BasicArrayPackage, BasicMapPackage {
+    }
+);
 
 #[derive(Default)]
 pub struct Engine {
     rules: Vec<Rule>,
-    events: HashMap<String, Rc<RwLock<dyn EventTrait>>>,
+    events: HashMap<String, EventType>,
     #[cfg(feature = "eval")]
     rhai_engine: RhaiEngine,
     coalescences: HashMap<String, (Instant, u64)>,
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    #[cfg(feature = "async")]
+    pub async fn new() -> Self {
         #[allow(unused_mut)]
-        let mut events: HashMap<_, Rc<RwLock<dyn EventTrait>>> = HashMap::new();
+        let mut events: HashMap<_, EventType> = HashMap::new();
 
         #[cfg(feature = "callback")]
         {
-            let event = Rc::new(RwLock::new(PostCallback::new()));
-            let key = event.read().unwrap().get_type().to_string();
+            let event = std::sync::Arc::new(futures_util::lock::Mutex::new(
+                PostCallback::new(),
+            ));
+            let key = event.lock().await.get_type().to_string();
             events.insert(key, event);
         }
 
         #[cfg(feature = "email")]
         {
-            let event = Rc::new(RwLock::new(EmailNotification::new()));
-            let key = event.read().unwrap().get_type().to_string();
+            let event = std::sync::Arc::new(futures_util::lock::Mutex::new(
+                EmailNotification::new(),
+            ));
+            let key = event.lock().await.get_type().to_string();
             events.insert(key, event);
         }
+
+        Self {
+            rules: Vec::new(),
+            #[cfg(feature = "eval")]
+            rhai_engine: {
+                let mut engine = RhaiEngine::new_raw();
+                engine.register_global_module(
+                    JsonRulesEnginePackage::new().as_shared_module(),
+                );
+                engine
+            },
+            coalescences: HashMap::new(),
+            events,
+        }
+    }
+
+    #[cfg(not(feature = "async"))]
+    pub fn new() -> Self {
+        #[allow(unused_mut)]
+        let mut events: HashMap<_, EventType> = HashMap::new();
 
         Self {
             rules: Vec::new(),
@@ -165,11 +194,20 @@ impl Engine {
         self.rhai_engine.register_fn(fname, f);
     }
 
-    pub fn add_event(&mut self, f: Rc<RwLock<dyn EventTrait>>) {
-        let key = f.read().unwrap().get_type().to_string();
+    #[cfg(feature = "async")]
+    pub async fn add_event(&mut self, f: EventType) {
+        let key = f.lock().await.get_type().to_string();
+
         self.events.insert(key, f);
     }
 
+    #[cfg(not(feature = "async"))]
+    pub fn add_event(&mut self, f: EventType) {
+        let key = f.lock().unwrap().get_type().to_string();
+        self.events.insert(key, f);
+    }
+
+    #[cfg(feature = "async")]
     pub async fn run<T: Serialize>(
         &mut self,
         facts: &T,
@@ -219,21 +257,87 @@ impl Engine {
             // TODO run all the async events in parallel
             // run the events
             for event in &rule_result.events {
-                let e =
-                    self.events.get_mut(&event.event.ty).ok_or_else(|| {
+                let mut e = self
+                    .events
+                    .get_mut(&event.event.ty)
+                    .ok_or_else(|| {
                         Error::EventError(
                             "Event type doesn't exist".to_string(),
                         )
-                    })?;
+                    })?
+                    .lock()
+                    .await;
 
-                e.read()
-                    .unwrap()
-                    .validate(&event.event.params)
+                e.validate(&event.event.params)
+                    .await
                     .map_err(Error::EventError)?;
-                e.write()
-                    .unwrap()
-                    .trigger(&event.event.params, &facts)
-                    .await?;
+                e.trigger(&event.event.params, &facts).await?;
+            }
+        }
+
+        Ok(met_rule_results)
+    }
+
+    #[cfg(not(feature = "async"))]
+    pub fn run<T: Serialize>(&mut self, facts: &T) -> Result<Vec<RuleResult>> {
+        let facts = to_value(facts)?;
+        let mut met_rule_results: Vec<RuleResult> = self
+            .rules
+            .iter()
+            .map(|rule| {
+                rule.check_value(
+                    &facts,
+                    #[cfg(feature = "eval")]
+                    &self.rhai_engine,
+                )
+            })
+            .filter(|rule_result| {
+                rule_result.condition_result.status == Status::Met
+            })
+            .collect();
+
+        self.coalescences.retain(|_k, (start, expiration)| {
+            start.elapsed().as_secs() < *expiration
+        });
+
+        for rule_result in met_rule_results.iter_mut() {
+            // filter the events
+            let mut cole = self.coalescences.clone();
+            rule_result.events.retain(|event| {
+                if let (Some(coalescence_group), Some(coalescence)) =
+                    (&event.coalescence_group, event.coalescence)
+                {
+                    if cole.contains_key(coalescence_group) {
+                        return false;
+                    } else {
+                        cole.insert(
+                            coalescence_group.clone(),
+                            (Instant::now(), coalescence),
+                        );
+                    }
+                }
+
+                true
+            });
+
+            self.coalescences = cole;
+
+            // TODO run all the async events in parallel
+            // run the events
+            for event in &rule_result.events {
+                let mut e = self
+                    .events
+                    .get_mut(&event.event.ty)
+                    .ok_or_else(|| {
+                        Error::EventError(
+                            "Event type doesn't exist".to_string(),
+                        )
+                    })?
+                    .lock()
+                    .unwrap();
+
+                e.validate(&event.event.params).map_err(Error::EventError)?;
+                e.trigger(&event.event.params, &facts)?;
             }
         }
 
