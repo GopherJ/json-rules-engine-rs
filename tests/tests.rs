@@ -222,7 +222,7 @@ async fn post_callback_event() {
     )
     .unwrap();
 
-    let mut engine = Engine::new();
+    let mut engine = Engine::new().await;
     engine.add_rule(rule);
 
     let facts = json!({
@@ -335,12 +335,12 @@ async fn custom_event_async() {
     )
     .unwrap();
 
-    let mut engine = Engine::new();
+    let mut engine = Engine::new().await;
     engine.add_rule(rule);
 
     let custom_event =
         std::sync::Arc::new(futures_util::lock::Mutex::new(CustomEvent::new()));
-    engine.add_event(custom_event.clone());
+    engine.add_event(custom_event.clone()).await;
 
     let facts = json!({
         "name": "Cheng JIANG",
@@ -350,7 +350,7 @@ async fn custom_event_async() {
 
     engine.run(&facts).await.unwrap();
 
-    assert_eq!(&custom_event.lock().unwrap().res, "name is: Cheng JIANG");
+    assert_eq!(&custom_event.lock().await.res, "name is: Cheng JIANG");
 }
 
 #[cfg(not(feature = "async"))]
