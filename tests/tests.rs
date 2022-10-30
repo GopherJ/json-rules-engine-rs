@@ -5,7 +5,10 @@ use json_rules_engine::{from_dynamic, Map};
 use json_rules_engine::{Engine, Error, EventTrait, Rule, Status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, rc::Rc, sync::RwLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 #[tokio::test]
 async fn basic_met() {
@@ -261,9 +264,9 @@ async fn custom_event() {
             &self.ty
         }
 
-        fn validate(
+        async fn validate(
             &self,
-            params: &HashMap<String, serde_json::Value>,
+            params: &HashMap<String, Value>,
         ) -> Result<(), String> {
             if !params.contains_key("name") {
                 return Err("'name' is missing.".to_string());
@@ -274,7 +277,7 @@ async fn custom_event() {
 
         async fn trigger(
             &mut self,
-            params: &HashMap<String, serde_json::Value>,
+            params: &HashMap<String, Value>,
             facts: &(dyn ErasedSerialize + Sync),
         ) -> Result<(), Error> {
             let mut name =
@@ -334,7 +337,7 @@ async fn custom_event() {
     let mut engine = Engine::new();
     engine.add_rule(rule);
 
-    let custom_event = Rc::new(RwLock::new(CustomEvent::new()));
+    let custom_event = Arc::new(RwLock::new(CustomEvent::new()));
     engine.add_event(custom_event.clone());
 
     let facts = json!({

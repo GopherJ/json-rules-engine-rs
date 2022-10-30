@@ -35,7 +35,10 @@ pub trait EventTrait {
 
     fn get_type(&self) -> &str;
 
-    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String>;
+    async fn validate(
+        &self,
+        params: &HashMap<String, Value>,
+    ) -> Result<(), String>;
 
     async fn trigger(
         &mut self,

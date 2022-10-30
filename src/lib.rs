@@ -91,20 +91,21 @@ use crate::event::post_callback::PostCallback;
 
 pub use crate::error::*;
 use serde::Serialize;
-use std::{rc::Rc, sync::RwLock};
+use std::sync::{Arc, RwLock};
+
+type EventType = Arc<RwLock<dyn EventTrait>>;
 
 #[cfg(feature = "eval")]
-def_package!(rhai:JsonRulesEnginePackage:"Package for json-rules-engine", lib, {
-    ArithmeticPackage::init(lib);
-    LogicPackage::init(lib);
-    BasicArrayPackage::init(lib);
-    BasicMapPackage::init(lib);
-});
+def_package!(
+    /// Package for json-rules-engine
+    pub JsonRulesEnginePackage(module) : ArithmeticPackage, LogicPackage, BasicArrayPackage, BasicMapPackage {
+    }
+);
 
 #[derive(Default)]
 pub struct Engine {
     rules: Vec<Rule>,
-    events: HashMap<String, Rc<RwLock<dyn EventTrait>>>,
+    events: HashMap<String, EventType>,
     #[cfg(feature = "eval")]
     rhai_engine: RhaiEngine,
     coalescences: HashMap<String, (Instant, u64)>,
@@ -113,18 +114,18 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         #[allow(unused_mut)]
-        let mut events: HashMap<_, Rc<RwLock<dyn EventTrait>>> = HashMap::new();
+        let mut events: HashMap<_, EventType> = HashMap::new();
 
         #[cfg(feature = "callback")]
         {
-            let event = Rc::new(RwLock::new(PostCallback::new()));
+            let event = Arc::new(RwLock::new(PostCallback::new()));
             let key = event.read().unwrap().get_type().to_string();
             events.insert(key, event);
         }
 
         #[cfg(feature = "email")]
         {
-            let event = Rc::new(RwLock::new(EmailNotification::new()));
+            let event = Arc::new(RwLock::new(EmailNotification::new()));
             let key = event.read().unwrap().get_type().to_string();
             events.insert(key, event);
         }
@@ -165,7 +166,7 @@ impl Engine {
         self.rhai_engine.register_fn(fname, f);
     }
 
-    pub fn add_event(&mut self, f: Rc<RwLock<dyn EventTrait>>) {
+    pub fn add_event(&mut self, f: EventType) {
         let key = f.read().unwrap().get_type().to_string();
         self.events.insert(key, f);
     }
@@ -229,6 +230,7 @@ impl Engine {
                 e.read()
                     .unwrap()
                     .validate(&event.event.params)
+                    .await
                     .map_err(Error::EventError)?;
                 e.write()
                     .unwrap()
