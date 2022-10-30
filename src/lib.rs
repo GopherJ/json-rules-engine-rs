@@ -91,12 +91,11 @@ use crate::event::post_callback::PostCallback;
 
 pub use crate::error::*;
 use serde::Serialize;
-use std::sync::RwLock;
 
 #[cfg(feature = "async")]
-type EventType = std::sync::Arc<RwLock<dyn EventTrait>>;
+type EventType = std::sync::Arc<futures_util::lock::Mutex<dyn EventTrait>>;
 #[cfg(not(feature = "async"))]
-type EventType = std::rc::Rc<RwLock<dyn EventTrait>>;
+type EventType = std::rc::Rc<std::sync::Mutex<dyn EventTrait>>;
 
 #[cfg(feature = "eval")]
 def_package!(
@@ -115,24 +114,48 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new() -> Self {
+    #[cfg(feature = "async")]
+    pub async fn new() -> Self {
         #[allow(unused_mut)]
         let mut events: HashMap<_, EventType> = HashMap::new();
 
         #[cfg(feature = "callback")]
         {
-            let event = std::sync::Arc::new(RwLock::new(PostCallback::new()));
-            let key = event.read().unwrap().get_type().to_string();
+            let event = std::sync::Arc::new(futures_util::lock::Mutex::new(
+                PostCallback::new(),
+            ));
+            let key = event.lock().await.get_type().to_string();
             events.insert(key, event);
         }
 
         #[cfg(feature = "email")]
         {
-            let event =
-                std::sync::Arc::new(RwLock::new(EmailNotification::new()));
-            let key = event.read().unwrap().get_type().to_string();
+            let event = std::sync::Arc::new(futures_util::lock::Mutex::new(
+                EmailNotification::new(),
+            ));
+            let key = event.lock().await.get_type().to_string();
             events.insert(key, event);
         }
+
+        Self {
+            rules: Vec::new(),
+            #[cfg(feature = "eval")]
+            rhai_engine: {
+                let mut engine = RhaiEngine::new_raw();
+                engine.register_global_module(
+                    JsonRulesEnginePackage::new().as_shared_module(),
+                );
+                engine
+            },
+            coalescences: HashMap::new(),
+            events,
+        }
+    }
+
+    #[cfg(not(feature = "async"))]
+    pub fn new() -> Self {
+        #[allow(unused_mut)]
+        let mut events: HashMap<_, EventType> = HashMap::new();
 
         Self {
             rules: Vec::new(),
@@ -170,8 +193,16 @@ impl Engine {
         self.rhai_engine.register_fn(fname, f);
     }
 
+    #[cfg(feature = "async")]
+    pub async fn add_event(&mut self, f: EventType) {
+        let key = f.lock().await.get_type().to_string();
+
+        self.events.insert(key, f);
+    }
+
+    #[cfg(not(feature = "async"))]
     pub fn add_event(&mut self, f: EventType) {
-        let key = f.read().unwrap().get_type().to_string();
+        let key = f.lock().unwrap().get_type().to_string();
         self.events.insert(key, f);
     }
 
@@ -225,22 +256,21 @@ impl Engine {
             // TODO run all the async events in parallel
             // run the events
             for event in &rule_result.events {
-                let e =
-                    self.events.get_mut(&event.event.ty).ok_or_else(|| {
+                let mut e = self
+                    .events
+                    .get_mut(&event.event.ty)
+                    .ok_or_else(|| {
                         Error::EventError(
                             "Event type doesn't exist".to_string(),
                         )
-                    })?;
+                    })?
+                    .lock()
+                    .await;
 
-                e.read()
-                    .unwrap()
-                    .validate(&event.event.params)
+                e.validate(&event.event.params)
                     .await
                     .map_err(Error::EventError)?;
-                e.write()
-                    .unwrap()
-                    .trigger(&event.event.params, &facts)
-                    .await?;
+                e.trigger(&event.event.params, &facts).await?;
             }
         }
 
@@ -294,18 +324,19 @@ impl Engine {
             // TODO run all the async events in parallel
             // run the events
             for event in &rule_result.events {
-                let e =
-                    self.events.get_mut(&event.event.ty).ok_or_else(|| {
+                let mut e = self
+                    .events
+                    .get_mut(&event.event.ty)
+                    .ok_or_else(|| {
                         Error::EventError(
                             "Event type doesn't exist".to_string(),
                         )
-                    })?;
+                    })?
+                    .lock()
+                    .unwrap();
 
-                e.read()
-                    .unwrap()
-                    .validate(&event.event.params)
-                    .map_err(Error::EventError)?;
-                e.write().unwrap().trigger(&event.event.params, &facts)?;
+                e.validate(&event.event.params).map_err(Error::EventError)?;
+                e.trigger(&event.event.params, &facts)?;
             }
         }
 

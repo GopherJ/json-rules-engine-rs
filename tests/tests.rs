@@ -5,7 +5,7 @@ use json_rules_engine::{from_dynamic, Map};
 use json_rules_engine::{Engine, Error, EventTrait, Rule, Status};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, sync::Mutex};
 
 #[cfg(not(feature = "async"))]
 #[test]
@@ -338,7 +338,8 @@ async fn custom_event_async() {
     let mut engine = Engine::new();
     engine.add_rule(rule);
 
-    let custom_event = std::sync::Arc::new(RwLock::new(CustomEvent::new()));
+    let custom_event =
+        std::sync::Arc::new(futures_util::lock::Mutex::new(CustomEvent::new()));
     engine.add_event(custom_event.clone());
 
     let facts = json!({
@@ -349,7 +350,7 @@ async fn custom_event_async() {
 
     engine.run(&facts).await.unwrap();
 
-    assert_eq!(&custom_event.read().unwrap().res, "name is: Cheng JIANG");
+    assert_eq!(&custom_event.lock().unwrap().res, "name is: Cheng JIANG");
 }
 
 #[cfg(not(feature = "async"))]
@@ -453,7 +454,7 @@ fn custom_event() {
     let mut engine = Engine::new();
     engine.add_rule(rule);
 
-    let custom_event = std::rc::Rc::new(RwLock::new(CustomEvent::new()));
+    let custom_event = std::rc::Rc::new(Mutex::new(CustomEvent::new()));
     engine.add_event(custom_event.clone());
 
     let facts = json!({
@@ -464,7 +465,7 @@ fn custom_event() {
 
     engine.run(&facts).unwrap();
 
-    assert_eq!(&custom_event.read().unwrap().res, "name is: Cheng JIANG");
+    assert_eq!(&custom_event.lock().unwrap().res, "name is: Cheng JIANG");
 }
 
 #[cfg(not(feature = "async"))]
