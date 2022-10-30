@@ -91,9 +91,12 @@ use crate::event::post_callback::PostCallback;
 
 pub use crate::error::*;
 use serde::Serialize;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
-type EventType = Arc<RwLock<dyn EventTrait>>;
+#[cfg(feature = "async")]
+type EventType = std::sync::Arc<RwLock<dyn EventTrait>>;
+#[cfg(not(feature = "async"))]
+type EventType = std::rc::Rc<RwLock<dyn EventTrait>>;
 
 #[cfg(feature = "eval")]
 def_package!(
@@ -118,14 +121,15 @@ impl Engine {
 
         #[cfg(feature = "callback")]
         {
-            let event = Arc::new(RwLock::new(PostCallback::new()));
+            let event = std::sync::Arc::new(RwLock::new(PostCallback::new()));
             let key = event.read().unwrap().get_type().to_string();
             events.insert(key, event);
         }
 
         #[cfg(feature = "email")]
         {
-            let event = Arc::new(RwLock::new(EmailNotification::new()));
+            let event =
+                std::sync::Arc::new(RwLock::new(EmailNotification::new()));
             let key = event.read().unwrap().get_type().to_string();
             events.insert(key, event);
         }
@@ -171,6 +175,7 @@ impl Engine {
         self.events.insert(key, f);
     }
 
+    #[cfg(feature = "async")]
     pub async fn run<T: Serialize>(
         &mut self,
         facts: &T,
@@ -236,6 +241,71 @@ impl Engine {
                     .unwrap()
                     .trigger(&event.event.params, &facts)
                     .await?;
+            }
+        }
+
+        Ok(met_rule_results)
+    }
+
+    #[cfg(not(feature = "async"))]
+    pub fn run<T: Serialize>(&mut self, facts: &T) -> Result<Vec<RuleResult>> {
+        let facts = to_value(facts)?;
+        let mut met_rule_results: Vec<RuleResult> = self
+            .rules
+            .iter()
+            .map(|rule| {
+                rule.check_value(
+                    &facts,
+                    #[cfg(feature = "eval")]
+                    &self.rhai_engine,
+                )
+            })
+            .filter(|rule_result| {
+                rule_result.condition_result.status == Status::Met
+            })
+            .collect();
+
+        self.coalescences.retain(|_k, (start, expiration)| {
+            start.elapsed().as_secs() < *expiration
+        });
+
+        for rule_result in met_rule_results.iter_mut() {
+            // filter the events
+            let mut cole = self.coalescences.clone();
+            rule_result.events.retain(|event| {
+                if let (Some(coalescence_group), Some(coalescence)) =
+                    (&event.coalescence_group, event.coalescence)
+                {
+                    if cole.contains_key(coalescence_group) {
+                        return false;
+                    } else {
+                        cole.insert(
+                            coalescence_group.clone(),
+                            (Instant::now(), coalescence),
+                        );
+                    }
+                }
+
+                true
+            });
+
+            self.coalescences = cole;
+
+            // TODO run all the async events in parallel
+            // run the events
+            for event in &rule_result.events {
+                let e =
+                    self.events.get_mut(&event.event.ty).ok_or_else(|| {
+                        Error::EventError(
+                            "Event type doesn't exist".to_string(),
+                        )
+                    })?;
+
+                e.read()
+                    .unwrap()
+                    .validate(&event.event.params)
+                    .map_err(Error::EventError)?;
+                e.write().unwrap().trigger(&event.event.params, &facts)?;
             }
         }
 

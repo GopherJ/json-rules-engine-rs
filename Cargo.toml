@@ -12,7 +12,7 @@ repository  = "https://github.com/GopherJ/json-rules-engine-rs"
 version     = "0.9.4"
 
 [dependencies]
-async-trait  = "0.1"
+async-trait  = { version = "0.1", optional = true }
 erased-serde = "0.3"
 futures-util = { version = "0.3", optional = true }
 jsonpath_lib = { version = "0.3", optional = true }
@@ -40,9 +40,10 @@ tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
+async = ["async-trait", "futures-util"]
 
-callback = ["reqwest"]
-email    = ["sendgrid", "futures-util"]
+callback = ["reqwest", "async"]
+email    = ["sendgrid", "async"]
 
 eval = ["rhai"]
 path = ["jsonpath_lib"]

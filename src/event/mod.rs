@@ -1,5 +1,6 @@
 use crate::error::Error;
 
+#[cfg(feature = "async")]
 use async_trait::async_trait;
 use erased_serde::Serialize as ErasedSerialize;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ pub struct Event {
     pub params: HashMap<String, Value>,
 }
 
-#[async_trait]
+#[cfg_attr(feature = "async", async_trait)]
 pub trait EventTrait {
     fn new() -> Self
     where
@@ -35,12 +36,22 @@ pub trait EventTrait {
 
     fn get_type(&self) -> &str;
 
+    #[cfg(feature = "async")]
     async fn validate(
         &self,
         params: &HashMap<String, Value>,
     ) -> Result<(), String>;
+    #[cfg(not(feature = "async"))]
+    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String>;
 
+    #[cfg(feature = "async")]
     async fn trigger(
+        &mut self,
+        params: &HashMap<String, Value>,
+        facts: &(dyn ErasedSerialize + Sync),
+    ) -> Result<(), Error>;
+    #[cfg(not(feature = "async"))]
+    fn trigger(
         &mut self,
         params: &HashMap<String, Value>,
         facts: &(dyn ErasedSerialize + Sync),
