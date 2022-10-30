@@ -27,7 +27,10 @@ impl EventTrait for EmailNotification {
         &self.ty
     }
 
-    fn validate(&self, params: &HashMap<String, Value>) -> Result<(), String> {
+    async fn validate(
+        &self,
+        params: &HashMap<String, Value>,
+    ) -> Result<(), String> {
         if !(params.contains_key("to")
             && params.contains_key("from")
             && params.contains_key("title")

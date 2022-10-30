@@ -200,7 +200,7 @@ impl Constraint {
                 match Self::value_as_i64_array(v) {
                     None => Status::NotMet,
                     Some(v) => {
-                        if nums.iter().all(|num| v.contains(&num)) {
+                        if nums.iter().all(|num| v.contains(num)) {
                             Status::Met
                         } else {
                             Status::NotMet
@@ -212,7 +212,7 @@ impl Constraint {
                 match Self::value_as_i64_array(v) {
                     None => Status::NotMet,
                     Some(v) => {
-                        if nums.iter().any(|num| v.contains(&num)) {
+                        if nums.iter().any(|num| v.contains(num)) {
                             Status::Met
                         } else {
                             Status::NotMet
@@ -236,7 +236,7 @@ impl Constraint {
                 match Self::value_as_i64_array(v) {
                     None => Status::NotMet,
                     Some(v) => {
-                        if nums.iter().all(|num| !v.contains(&num)) {
+                        if nums.iter().all(|num| !v.contains(num)) {
                             Status::Met
                         } else {
                             Status::NotMet
