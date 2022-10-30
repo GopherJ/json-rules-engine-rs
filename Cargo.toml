@@ -3,13 +3,14 @@ authors     = [
   "Cheng JIANG <alex_cj96@foxmail.com>",
   "Benn Sundsrud <benn.sundsrud@gmail.com>",
 ]
-description = "json rules engine"
-edition     = "2018"
-keywords    = ["json", "rule", "rules", "engine"]
-license     = "MIT/Apache-2.0"
-name        = "json-rules-engine"
-repository  = "https://github.com/GopherJ/json-rules-engine-rs"
-version     = "0.9.4"
+description  = "json rules engine"
+edition      = "2021"
+keywords     = ["json", "rule", "rules", "engine"]
+license      = "MIT/Apache-2.0"
+name         = "json-rules-engine"
+repository   = "https://github.com/GopherJ/json-rules-engine-rs"
+version      = "0.9.4"
+rust-version = "1.61.0"
 
 [dependencies]
 async-trait  = { version = "0.1", optional = true }
@@ -40,10 +41,10 @@ tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
-async = ["async-trait", "futures-util"]
+async = ["async-trait"]
 
 callback = ["reqwest", "async"]
-email    = ["sendgrid", "async"]
+email    = ["sendgrid", "async", "futures-util"]
 
 eval = ["rhai"]
 path = ["jsonpath_lib"]
