@@ -94,7 +94,7 @@ use serde::Serialize;
 use std::sync::RwLock;
 
 #[cfg(feature = "async")]
-type EventType = std::sync::Arc<RwLock<dyn EventTrait + Send>>;
+type EventType = std::sync::Arc<RwLock<dyn EventTrait>>;
 #[cfg(not(feature = "async"))]
 type EventType = std::rc::Rc<RwLock<dyn EventTrait>>;
 
