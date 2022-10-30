@@ -93,7 +93,7 @@ pub use crate::error::*;
 use serde::Serialize;
 
 #[cfg(feature = "async")]
-type EventType = std::sync::Arc<futures_util::lock::Mutex<dyn EventTrait + Send>>;
+type EventType = std::sync::Arc<futures_util::lock::Mutex<dyn EventTrait + Send + Sync>>;
 #[cfg(not(feature = "async"))]
 type EventType = std::rc::Rc<std::sync::Mutex<dyn EventTrait>>;
 
