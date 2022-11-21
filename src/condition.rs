@@ -699,21 +699,25 @@ mod tests {
 
     #[test]
     fn string_is_subset_rule() {
-        let map = json!({
-            "foo": ["a", "b"],
-        });
-
+        let map = json!({ "foo": ["a", "b"] });
         let rule = string_is_subset("foo", vec!["a", "c", "b"]);
         let res = rule.check_value(&map);
         assert_eq!(res.status, Status::Met);
-
         let rule = string_is_subset("foo", vec!["a", "b"]);
         let res = rule.check_value(&map);
         assert_eq!(res.status, Status::Met);
-
         let rule = string_is_subset("foo", vec!["a", "c"]);
         let res = rule.check_value(&map);
         assert_eq!(res.status, Status::NotMet);
+        let rule = string_is_subset("foo", vec![]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::NotMet);
+
+        // empty facts
+        let map = json!({ "foo": [] });
+        let rule = string_is_subset("foo", vec!["a", "c", "b"]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::Met);
     }
 
     #[test]
