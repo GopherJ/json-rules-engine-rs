@@ -18,6 +18,7 @@ pub enum Constraint {
     StringDoesNotContainAny(Vec<String>),
     StringIn(Vec<String>),
     StringNotIn(Vec<String>),
+    StringIsSubset(Vec<String>),
     IntEquals(i64),
     IntNotEquals(i64),
     IntContains(i64),
@@ -106,6 +107,18 @@ impl Constraint {
                             Status::Met
                         } else {
                             Status::NotMet
+                        }
+                    }
+                }
+            }
+            Constraint::StringIsSubset(ref s) => {
+                match Self::value_as_str_array(v) {
+                    None => Status::NotMet,
+                    Some(v) => {
+                        if v.into_iter().any(|y| !s.contains(&y.into())) {
+                            Status::NotMet
+                        } else {
+                            Status::Met
                         }
                     }
                 }
@@ -472,6 +485,6 @@ mod tests {
 
     #[test]
     fn available_operators() {
-        assert_eq!(Constraint::operators().len(), 37);
+        assert_eq!(Constraint::operators().len(), 38);
     }
 }
