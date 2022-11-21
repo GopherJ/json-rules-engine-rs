@@ -229,22 +229,6 @@
                             "properties": {
                                 "operator": {
                                     "type": "string",
-                                    "enum": ["string_is_subset"]
-                                },
-                                "value": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "object",
-                            "required": ["operator", "value"],
-                            "properties": {
-                                "operator": {
-                                    "type": "string",
                                     "enum": ["string_contains_any"]
                                 },
                                 "value": {
@@ -307,6 +291,22 @@
                                 "operator": {
                                     "type": "string",
                                     "enum": ["string_not_in"]
+                                },
+                                "value": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "required": ["operator", "value"],
+                            "properties": {
+                                "operator": {
+                                    "type": "string",
+                                    "enum": ["string_is_subset"]
                                 },
                                 "value": {
                                     "type": "array",
