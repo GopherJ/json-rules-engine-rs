@@ -298,6 +298,16 @@ pub fn string_does_not_contain_any(field: &str, val: Vec<&str>) -> Condition {
     }
 }
 
+pub fn string_is_subset(field: &str, val: Vec<&str>) -> Condition {
+    Condition::Condition {
+        field: field.into(),
+        constraint: Constraint::StringIsSubset(
+            val.into_iter().map(ToOwned::to_owned).collect(),
+        ),
+        path: None,
+    }
+}
+
 pub fn string_in(field: &str, val: Vec<&str>) -> Condition {
     Condition::Condition {
         field: field.into(),
@@ -549,7 +559,7 @@ pub fn bool_equals(field: &str, val: bool) -> Condition {
 #[cfg(test)]
 mod tests {
     use super::{
-        and, at_least, bool_equals, int_equals, int_in_range, or, string_equals,
+        and, at_least, bool_equals, int_equals, int_in_range, or, string_equals, string_is_subset
     };
     use crate::status::Status;
     use serde_json::{json, Value};
@@ -685,6 +695,29 @@ mod tests {
         rule = string_equals("bar", "baz");
         res = rule.check_value(&map);
         assert_eq!(res.status, Status::NotMet);
+    }
+
+    #[test]
+    fn string_is_subset_rule() {
+        let map = json!({ "foo": ["a", "b"] });
+        let rule = string_is_subset("foo", vec!["a", "c", "b"]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::Met);
+        let rule = string_is_subset("foo", vec!["a", "b"]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::Met);
+        let rule = string_is_subset("foo", vec!["a", "c"]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::NotMet);
+        let rule = string_is_subset("foo", vec![]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::NotMet);
+
+        // empty facts
+        let map = json!({ "foo": [] });
+        let rule = string_is_subset("foo", vec!["a", "c", "b"]);
+        let res = rule.check_value(&map);
+        assert_eq!(res.status, Status::Met);
     }
 
     #[test]
